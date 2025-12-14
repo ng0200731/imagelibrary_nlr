@@ -1744,7 +1744,7 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 .image-preview-eye {
   position: absolute;
   top: 8px;
-  left: 8px;
+  right: 8px;
   background: rgba(255, 255, 255, 0.9);
   color: #000;
   border: 2px solid #000;
@@ -1762,7 +1762,8 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   user-select: none;
 }
 
-.library-card:hover .image-preview-eye {
+.library-card:hover .image-preview-eye,
+.preview-card:hover .image-preview-eye {
   opacity: 1;
 }
 

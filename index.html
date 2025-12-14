@@ -1577,8 +1577,22 @@
                     card.remove();
                 });
 
+                // Add 1:1 icon for full-size preview
+                const previewIcon = document.createElement('div');
+                previewIcon.className = 'image-preview-eye';
+                previewIcon.textContent = '1:1';
+                previewIcon.title = 'Preview full size image';
+                const imageSrc = e.target.result; // Store image source for preview
+                previewIcon.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    // Show image in overlay at original size
+                    showImagePreviewOverlay(imageSrc, null);
+                });
+
                 card.appendChild(del);
                 card.appendChild(img);
+                card.appendChild(previewIcon);
                 previewGrid.appendChild(card);
             };
             reader.readAsDataURL(file);
@@ -2830,7 +2844,7 @@
         currentPreviewIndex = 0;
 
         previewOverlayImg.src = imageSrc;
-        previewOverlayImg.alt = `Full size preview of image ${image.id}`;
+        previewOverlayImg.alt = image ? `Full size preview of image ${image.id}` : 'Full size preview';
 
         // Reset scroll position to top-left
         imagePreviewOverlay.scrollTop = 0;
@@ -2848,7 +2862,11 @@
         // Add pan event listeners
         addPanEventListeners();
 
-        console.log('Regular image preview overlay opened for image:', image.id);
+        if (image) {
+            console.log('Regular image preview overlay opened for image:', image.id);
+        } else {
+            console.log('Image preview overlay opened for uploaded image');
+        }
     }
 
     function hideImagePreviewOverlay() {
