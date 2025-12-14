@@ -434,8 +434,67 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 
 /* Firefox scrollbar styling */
 .preview-grid {
-    scrollbar-width: thin;
-    scrollbar-color: #000 #f1f1f1;
+  scrollbar-width: thin;
+  scrollbar-color: #000 #f1f1f1;
+}
+
+/* Loading skeleton cards */
+.skeleton-card {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  position: relative;
+  overflow: hidden;
+  min-height: 150px;
+}
+
+.skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* Load More button */
+.load-more-button {
+  grid-column: 1 / -1;
+  padding: 12px 24px;
+  margin: 16px auto;
+  background: #000;
+  color: #fff;
+  border: 1px solid #000;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+  display: block;
+  max-width: 200px;
+}
+
+.load-more-button:hover {
+  background: #333;
+  color: #fff;
+}
+
+.load-more-button:active {
+  background: #000;
 }
 
 /* Ensure preview-grid in upload area has proper scrolling */
