@@ -588,8 +588,8 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 .creator-overlay {
   position: absolute;
   bottom: 8px;
-  left: 8px;
-  right: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.75);
   color: #fff;
   padding: 4px 8px;

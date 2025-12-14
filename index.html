@@ -1201,7 +1201,7 @@
             const creatorOverlay = document.createElement('div');
             creatorOverlay.className = 'creator-overlay';
             const emailPrefix = getEmailPrefix(image.ownership);
-            creatorOverlay.textContent = `👤 ${emailPrefix}`;
+            creatorOverlay.textContent = emailPrefix;
             creatorOverlay.title = `Created by: ${image.ownership}`;
             card.appendChild(creatorOverlay);
         }
