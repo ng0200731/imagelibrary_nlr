@@ -127,26 +127,28 @@
 
             <div class="tag-panels">
               <div class="tag-panel tag-panel--objective">
-                <div class="tag-panel__header is-objective">
+                <div class="tag-panel__header is-objective" style="display: none;">
                   OBJECTIVE (FACTS)
-                  <button id="auto-fill-btn" class="button auto-fill-btn" type="button">Auto Fill</button>
                 </div>
-                <div class="tag-panel__body">
+                <div class="tag-panel__body" style="padding-top: 8px;">
+                  <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;">
+                    <button id="auto-fill-btn" class="button auto-fill-btn" type="button">Auto Fill</button>
+                  </div>
                   <!-- Location Fields -->
                   <div class="metadata-section">
                     <h4>Location</h4>
                     <div class="metadata-row">
                       <label class="tag-input">
-                        book: <input id="obj-book" type="text" placeholder="book:Album-01" />
+                        book: <input id="obj-book" type="text" placeholder="Album-01" data-prefix="book:" />
                       </label>
                       <label class="tag-input">
-                        page: <input id="obj-page" type="text" placeholder="page:15" />
+                        page: <input id="obj-page" type="text" placeholder="15" data-prefix="page:" />
                       </label>
                       <label class="tag-input">
-                        row: <input id="obj-row" type="text" placeholder="row:3" />
+                        row: <input id="obj-row" type="text" placeholder="3" data-prefix="row:" />
                       </label>
                       <label class="tag-input">
-                        column: <input id="obj-column" type="text" placeholder="column:2" />
+                        column: <input id="obj-column" type="text" placeholder="2" data-prefix="column:" />
                       </label>
                     </div>
                   </div>
@@ -156,16 +158,16 @@
                     <h4>Item Details</h4>
                     <div class="metadata-row">
                       <label class="tag-input">
-                        type: <input id="obj-type" type="text" placeholder="type:stamp" />
+                        type: <input id="obj-type" type="text" placeholder="stamp" data-prefix="type:" />
                       </label>
                       <label class="tag-input">
-                        material: <input id="obj-material" type="text" placeholder="material:paper" />
+                        material: <input id="obj-material" type="text" placeholder="paper" data-prefix="material:" />
                       </label>
                       <label class="tag-input">
-                        width (mm): <input id="obj-width" type="text" placeholder="width:25" class="dimension-field" />
+                        width (mm): <input id="obj-width" type="text" placeholder="25" class="dimension-field" data-prefix="width:" />
                       </label>
                       <label class="tag-input">
-                        length (mm): <input id="obj-length" type="text" placeholder="length:30" class="dimension-field" />
+                        length (mm): <input id="obj-length" type="text" placeholder="30" class="dimension-field" data-prefix="length:" />
                       </label>
                     </div>
                   </div>
@@ -173,20 +175,20 @@
                   <!-- Remark -->
                   <div class="metadata-section">
                     <h4>Remark</h4>
-                    <label class="tag-input">
-                      remark: <input id="obj-remark" type="text" placeholder="remark:excellent condition, rare find" />
-                    </label>
+                      <label class="tag-input">
+                        remark: <input id="obj-remark" type="text" placeholder="excellent condition, rare find" data-prefix="remark:" />
+                      </label>
                   </div>
 
                   <!-- Original Fields -->
                   <div class="metadata-section">
                     <h4>Additional Tags</h4>
-                    <label class="tag-input">
-                      brand: <input id="obj-brand" type="text" placeholder="brand:nike" />
-                    </label>
-                    <label class="tag-input">
-                      color: <input id="obj-color" type="text" placeholder="color:red" />
-                    </label>
+                      <label class="tag-input">
+                        brand: <input id="obj-brand" type="text" placeholder="nike" data-prefix="brand:" />
+                      </label>
+                      <label class="tag-input">
+                        color: <input id="obj-color" type="text" placeholder="red" data-prefix="color:" />
+                      </label>
                   </div>
 
                   <div id="obj-chips" class="chips"></div>
@@ -194,8 +196,8 @@
               </div>
 
               <div class="tag-panel tag-panel--subjective">
-                <div class="tag-panel__header is-subjective">SUBJECTIVE (FEELINGS)</div>
-                <div class="tag-panel__body">
+                <div class="tag-panel__header is-subjective" style="display: none;">SUBJECTIVE (FEELINGS)</div>
+                <div class="tag-panel__body" style="padding-top: 8px;">
                   <div class="subj-inline">
                     <div>
                       <label class="tag-input">Add feelings:
@@ -265,6 +267,16 @@
           <div class="modal-buttons">
             <button id="upload-more-btn" class="button">Upload More</button>
             <button id="go-to-library-btn" class="button is-primary">Go to Library</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning Dialog for Missing Feelings -->
+      <div id="feelings-warning-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Please add at least one feeling in the "Add feelings" field before uploading.</p>
+          <div class="modal-buttons">
+            <button id="ok-feelings-btn" class="button is-primary">OK</button>
           </div>
         </div>
       </div>
@@ -1419,7 +1431,15 @@
                 selectedImages: selectedImages,
                 searchTags: searchTags
             });
-            libraryGrid.innerHTML = '<p>Error loading images. Please try again.</p>';
+            
+            // Show user-friendly error message with retry button
+            libraryGrid.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <p style="font-size: 16px; margin-bottom: 8px;">❌ Error loading images</p>
+                    <p style="font-size: 14px; color: #999; margin-bottom: 16px;">${error.message || 'Please check your connection and try again.'}</p>
+                    <button class="button" onclick="displayLibraryImages()" style="margin-top: 8px;">Retry</button>
+                </div>
+            `;
 
             // Reset states to prevent getting stuck
             if (isPoolView) {
@@ -1572,8 +1592,11 @@
     function handleObjCommit(input) {
         const value = input.value.trim();
         if (value) {
-            // Create tag from input value (already includes prefix like "book:", "type:", etc.)
-            addObjChip(value);
+            // Get prefix from data attribute or determine from input id
+            const prefix = input.getAttribute('data-prefix') || '';
+            // Create tag with prefix (e.g., "book:Album-01" or just "Album-01" if no prefix)
+            const tagValue = prefix ? `${prefix}${value}` : value;
+            addObjChip(tagValue);
             input.value = '';
         }
     }
@@ -1619,18 +1642,18 @@
         // Random selection function
         const random = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-        // Fill all fields with random sample data
-        if (objBookInput) objBookInput.value = `book:${random(sampleData.books)}`;
-        if (objPageInput) objPageInput.value = `page:${random(sampleData.pages)}`;
-        if (objRowInput) objRowInput.value = `row:${random(sampleData.rows)}`;
-        if (objColumnInput) objColumnInput.value = `column:${random(sampleData.columns)}`;
-        if (objTypeInput) objTypeInput.value = `type:${random(sampleData.types)}`;
-        if (objMaterialInput) objMaterialInput.value = `material:${random(sampleData.materials)}`;
-        if (objWidthInput) objWidthInput.value = `width:${random(sampleData.widths)}`;
-        if (objLengthInput) objLengthInput.value = `length:${random(sampleData.lengths)}`;
-        if (objRemarkInput) objRemarkInput.value = `remark:${random(sampleData.remarks)}`;
-        if (objBrandInput) objBrandInput.value = `brand:${random(sampleData.brands)}`;
-        if (objColorInput) objColorInput.value = `color:${random(sampleData.colors)}`;
+        // Fill all fields with random sample data (without prefixes in input values)
+        if (objBookInput) objBookInput.value = random(sampleData.books);
+        if (objPageInput) objPageInput.value = random(sampleData.pages);
+        if (objRowInput) objRowInput.value = random(sampleData.rows);
+        if (objColumnInput) objColumnInput.value = random(sampleData.columns);
+        if (objTypeInput) objTypeInput.value = random(sampleData.types);
+        if (objMaterialInput) objMaterialInput.value = random(sampleData.materials);
+        if (objWidthInput) objWidthInput.value = random(sampleData.widths);
+        if (objLengthInput) objLengthInput.value = random(sampleData.lengths);
+        if (objRemarkInput) objRemarkInput.value = random(sampleData.remarks);
+        if (objBrandInput) objBrandInput.value = random(sampleData.brands);
+        if (objColorInput) objColorInput.value = random(sampleData.colors);
 
         // Visual feedback
         autoFillBtn.textContent = 'Filled!';
@@ -4360,6 +4383,14 @@
     navLinks.upload.addEventListener('click', (e) => { e.preventDefault(); navigateTo('upload'); });
     navLinks.project.addEventListener('click', (e) => { e.preventDefault(); navigateTo('project'); });
 
+    // Initialize: Load images when page first loads (if library page is visible)
+    if (pages.library && !pages.library.classList.contains('is-hidden')) {
+        console.log('Initial page load - loading library images');
+        displayLibraryImages().catch(error => {
+            console.error('Error loading images on initial page load:', error);
+        });
+    }
+
     // Broken image notification dismiss
     document.getElementById('dismiss-notification').addEventListener('click', () => {
         // Hide notification immediately
@@ -4471,6 +4502,11 @@
                 hideTagRemovalConfirmModal();
             } else if (!clearAllConfirmModal.classList.contains('is-hidden')) {
                 hideClearAllConfirmModal();
+            } else if (feelingsWarningModal && !feelingsWarningModal.classList.contains('is-hidden')) {
+                feelingsWarningModal.classList.add('is-hidden');
+                if (subjInput) {
+                    subjInput.focus();
+                }
             }
         }
     });
@@ -4479,6 +4515,8 @@
     const confirmModal = document.getElementById('confirm-modal');
     const uploadMoreBtn = document.getElementById('upload-more-btn');
     const goToLibraryBtn = document.getElementById('go-to-library-btn');
+    const feelingsWarningModal = document.getElementById('feelings-warning-modal');
+    const okFeelingsBtn = document.getElementById('ok-feelings-btn');
 
     function clearUploadUI() {
         previewGrid.innerHTML = '';
@@ -4507,6 +4545,28 @@
         navigateTo('library');
     });
 
+    // Handle OK button for feelings warning modal
+    if (okFeelingsBtn && feelingsWarningModal) {
+        okFeelingsBtn.addEventListener('click', () => {
+            feelingsWarningModal.classList.add('is-hidden');
+            // Focus on subjective input
+            if (subjInput) {
+                subjInput.focus();
+            }
+        });
+    }
+
+    // Handle OK button for feelings warning modal
+    if (okFeelingsBtn) {
+        okFeelingsBtn.addEventListener('click', () => {
+            feelingsWarningModal.classList.add('is-hidden');
+            // Focus on subjective input
+            if (subjInput) {
+                subjInput.focus();
+            }
+        });
+    }
+
     uploadButton.addEventListener('click', async () => {
         const subjTags = Array.from(subjChips.querySelectorAll('.chip')).map(chip => chip.textContent.replace(/[×x]$/, '').trim());
         const objTags = Array.from(objChips.querySelectorAll('.chip')).map(chip => chip.textContent.replace(/[×x]$/, '').trim());
@@ -4521,20 +4581,54 @@
         
         // Add width/length from input fields if they exist and aren't already in chips
         if (widthValue && !hasWidthInChips) {
-            // Ensure format is "width:value" - add prefix if missing
+            // Add prefix if not already present
             const widthTag = widthValue.toLowerCase().startsWith('width:') ? widthValue : `width:${widthValue}`;
             objTags.push(widthTag);
         }
         if (lengthValue && !hasLengthInChips) {
-            // Ensure format is "length:value" - add prefix if missing
+            // Add prefix if not already present
             const lengthTag = lengthValue.toLowerCase().startsWith('length:') ? lengthValue : `length:${lengthValue}`;
             objTags.push(lengthTag);
         }
+        
+        // Process all other objective inputs and add prefixes if needed
+        const objectiveInputs = [
+            { input: objBookInput, prefix: 'book:' },
+            { input: objPageInput, prefix: 'page:' },
+            { input: objRowInput, prefix: 'row:' },
+            { input: objColumnInput, prefix: 'column:' },
+            { input: objTypeInput, prefix: 'type:' },
+            { input: objMaterialInput, prefix: 'material:' },
+            { input: objRemarkInput, prefix: 'remark:' },
+            { input: objBrandInput, prefix: 'brand:' },
+            { input: objColorInput, prefix: 'color:' }
+        ];
+        
+        objectiveInputs.forEach(({ input, prefix }) => {
+            if (input && input.value.trim()) {
+                const value = input.value.trim();
+                const hasInChips = objTags.some(tag => tag.toLowerCase().startsWith(prefix));
+                if (!hasInChips) {
+                    // Add prefix if not already present
+                    const tag = value.toLowerCase().startsWith(prefix) ? value : `${prefix}${value}`;
+                    objTags.push(tag);
+                }
+            }
+        });
         
         const allTags = [...subjTags, ...objTags];
 
         if (filesToUpload.length === 0) {
             return alert('Please select images to upload.');
+        }
+
+        // Validate that at least one subjective tag (feeling) is added
+        if (subjTags.length === 0) {
+            // Show warning modal instead of alert
+            if (feelingsWarningModal) {
+                feelingsWarningModal.classList.remove('is-hidden');
+            }
+            return;
         }
 
         // Validate that at least one dimension field (width or length) is filled
