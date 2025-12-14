@@ -892,7 +892,16 @@ app.post('/auth/send-code', async (req, res) => {
             console.log(`Verification email sent successfully to ${email}`);
         } catch (emailError) {
             console.error('Email sending failed:', emailError);
-            return res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
+            console.error('Error details:', {
+                message: emailError.message,
+                code: emailError.code,
+                command: emailError.command,
+                response: emailError.response
+            });
+            return res.status(500).json({ 
+                error: 'Failed to send verification email. Please check your email service configuration or try again later.',
+                details: process.env.NODE_ENV === 'development' ? emailError.message : undefined
+            });
         }
 
         let message = 'Verification code sent to your email.';
@@ -1122,18 +1131,34 @@ function generateSessionToken() {
 
 // Send verification code email
 async function sendVerificationEmail(email, code, userStatus) {
-    // Use the same email configuration as the existing email service
+    // Email Configuration - Updated per configuration reference
+    // Gmail Configuration (Primary - TLS Port 587)
     const GMAIL_CONFIG = {
         host: 'smtp.gmail.com',
         port: 587,
-        secure: false,
+        secure: false, // Use TLS (STARTTLS)
         auth: {
             user: 'eric.brilliant@gmail.com',
             pass: 'opqx pfna kagb bznr'
-        }
+        },
+        connectionTimeout: 10000, // 10 seconds timeout
+        greetingTimeout: 10000,
+        socketTimeout: 10000
     };
 
-    const transporter = nodemailer.createTransport(GMAIL_CONFIG);
+    // 163.com Configuration (Backup - SSL Port 465 - TESTED WORKING)
+    const BACKUP_CONFIG = {
+        host: 'smtp.163.com',
+        port: 465,
+        secure: true, // Use SSL
+        auth: {
+            user: '19902475292@163.com',
+            pass: 'JDy8MigeNmsESZRa'
+        },
+        connectionTimeout: 10000, // 10 seconds timeout
+        greetingTimeout: 10000,
+        socketTimeout: 10000
+    };
 
     let subject, content;
 
@@ -1145,32 +1170,87 @@ async function sendVerificationEmail(email, code, userStatus) {
     `;
 
     const mailOptions = {
-        from: 'eric.brilliant@gmail.com',
+        from: GMAIL_CONFIG.auth.user,
         to: email,
         subject: subject,
         html: content
     };
 
-    await transporter.sendMail(mailOptions);
+    // Try 163.com first (TESTED WORKING) since it's more reliable
+    try {
+        console.log(`[Email] Attempting to send verification code via 163.com (TESTED WORKING) to ${email}...`);
+        const backupTransporter = nodemailer.createTransport(BACKUP_CONFIG);
+        
+        // Update mail options for 163.com
+        mailOptions.from = BACKUP_CONFIG.auth.user;
+        
+        // Verify connection first
+        await backupTransporter.verify();
+        console.log('[Email] 163.com SMTP connection verified (SSL Port 465)');
+        
+        await backupTransporter.sendMail(mailOptions);
+        console.log(`[Email] Verification code sent successfully via 163.com to ${email}`);
+        return;
+    } catch (backupError) {
+        console.error('[Email] 163.com sending failed:', backupError.message);
+        console.error('[Email] Full 163.com error:', backupError);
+        
+        // Fallback to Gmail
+        try {
+            console.log(`[Email] Attempting to send verification code via Gmail (TLS Port 587) to ${email}...`);
+            const transporter = nodemailer.createTransport(GMAIL_CONFIG);
+            
+            // Update mail options for Gmail
+            mailOptions.from = GMAIL_CONFIG.auth.user;
+            
+            // Verify connection first
+            await transporter.verify();
+            console.log('[Email] Gmail SMTP connection verified (TLS Port 587)');
+            
+            await transporter.sendMail(mailOptions);
+            console.log(`[Email] Verification code sent successfully via Gmail to ${email}`);
+            return;
+        } catch (gmailError) {
+            console.error('[Email] Gmail sending also failed:', gmailError.message);
+            console.error('[Email] Full Gmail error:', gmailError);
+            throw new Error(`Both email services failed. 163.com: ${backupError.message}, Gmail: ${gmailError.message}`);
+        }
+    }
 }
 
 // Send approval email
 async function sendApprovalEmail(email) {
-    // Use the same email configuration as the existing email service
+    // Email Configuration - Updated per configuration reference
+    // Gmail Configuration (Primary - TLS Port 587)
     const GMAIL_CONFIG = {
         host: 'smtp.gmail.com',
         port: 587,
-        secure: false,
+        secure: false, // Use TLS (STARTTLS)
         auth: {
             user: 'eric.brilliant@gmail.com',
             pass: 'opqx pfna kagb bznr'
-        }
+        },
+        connectionTimeout: 10000, // 10 seconds timeout
+        greetingTimeout: 10000,
+        socketTimeout: 10000
     };
 
-    const transporter = nodemailer.createTransport(GMAIL_CONFIG);
+    // 163.com Configuration (Backup - SSL Port 465 - TESTED WORKING)
+    const BACKUP_CONFIG = {
+        host: 'smtp.163.com',
+        port: 465,
+        secure: true, // Use SSL
+        auth: {
+            user: '19902475292@163.com',
+            pass: 'JDy8MigeNmsESZRa'
+        },
+        connectionTimeout: 10000, // 10 seconds timeout
+        greetingTimeout: 10000,
+        socketTimeout: 10000
+    };
 
     const mailOptions = {
-        from: 'eric.brilliant@gmail.com',
+        from: BACKUP_CONFIG.auth.user,
         to: email,
         subject: 'Approval access of image library',
         html: `
@@ -1180,7 +1260,38 @@ async function sendApprovalEmail(email) {
         `
     };
 
-    await transporter.sendMail(mailOptions);
+    // Try 163.com first (TESTED WORKING) since it's more reliable
+    try {
+        console.log(`[Email] Attempting to send approval email via 163.com (TESTED WORKING) to ${email}...`);
+        const backupTransporter = nodemailer.createTransport(BACKUP_CONFIG);
+        
+        await backupTransporter.verify();
+        console.log('[Email] 163.com SMTP connection verified (SSL Port 465)');
+        
+        await backupTransporter.sendMail(mailOptions);
+        console.log(`[Email] Approval email sent successfully via 163.com to ${email}`);
+        return;
+    } catch (backupError) {
+        console.error('[Email] 163.com sending failed:', backupError.message);
+        
+        // Fallback to Gmail
+        try {
+            console.log(`[Email] Attempting to send approval email via Gmail (TLS Port 587) to ${email}...`);
+            const transporter = nodemailer.createTransport(GMAIL_CONFIG);
+            
+            mailOptions.from = GMAIL_CONFIG.auth.user;
+            
+            await transporter.verify();
+            console.log('[Email] Gmail SMTP connection verified (TLS Port 587)');
+            
+            await transporter.sendMail(mailOptions);
+            console.log(`[Email] Approval email sent successfully via Gmail to ${email}`);
+            return;
+        } catch (gmailError) {
+            console.error('[Email] Gmail sending also failed:', gmailError.message);
+            throw new Error(`Both email services failed. 163.com: ${backupError.message}, Gmail: ${gmailError.message}`);
+        }
+    }
 }
 
 app.listen(port, () => {

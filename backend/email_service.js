@@ -3,25 +3,33 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-// Email Configuration
+// Email Configuration - Updated per configuration reference
+// Gmail Configuration (Primary - TLS Port 587)
 const GMAIL_CONFIG = {
     host: 'smtp.gmail.com',
     port: 587,
-    secure: false,
+    secure: false, // Use TLS (STARTTLS)
     auth: {
         user: 'eric.brilliant@gmail.com',
         pass: 'opqx pfna kagb bznr'
-    }
+    },
+    connectionTimeout: 10000, // 10 seconds timeout
+    greetingTimeout: 10000,
+    socketTimeout: 10000
 };
 
+// 163.com Configuration (Backup - SSL Port 465 - TESTED WORKING)
 const BACKUP_CONFIG = {
     host: 'smtp.163.com',
     port: 465,
-    secure: true,
+    secure: true, // Use SSL
     auth: {
         user: '19902475292@163.com',
         pass: 'JDy8MigeNmsESZRa'
-    }
+    },
+    connectionTimeout: 10000, // 10 seconds timeout
+    greetingTimeout: 10000,
+    socketTimeout: 10000
 };
 
 /**
@@ -38,12 +46,12 @@ async function sendProjectEmail(projectData, recipientEmail, senderMessage = '')
     console.log('Images count:', projectData.images ? projectData.images.length : 0);
 
     try {
-        // Try Gmail first, then fallback to 163.com
-        console.log('Attempting Gmail SMTP...');
-        let success = await sendWithGmail(projectData, recipientEmail, senderMessage);
+        // Try 163.com first (TESTED WORKING) since it's more reliable, then fallback to Gmail
+        console.log('Attempting 163.com SMTP (TESTED WORKING)...');
+        let success = await sendWithBackup(projectData, recipientEmail, senderMessage);
         if (!success) {
-            console.log('Gmail failed, trying 163.com backup...');
-            success = await sendWithBackup(projectData, recipientEmail, senderMessage);
+            console.log('163.com failed, trying Gmail backup...');
+            success = await sendWithGmail(projectData, recipientEmail, senderMessage);
         }
 
         console.log('Email sending result:', success);
@@ -55,12 +63,16 @@ async function sendProjectEmail(projectData, recipientEmail, senderMessage = '')
 }
 
 /**
- * Send email using Gmail SMTP
+ * Send email using Gmail SMTP (TLS Port 587)
  */
 async function sendWithGmail(projectData, recipientEmail, senderMessage) {
     try {
-        console.log('Creating Gmail transporter...');
+        console.log('Creating Gmail transporter (TLS Port 587)...');
         const transporter = nodemailer.createTransport(GMAIL_CONFIG);
+
+        // Verify connection first
+        await transporter.verify();
+        console.log('[Email] Gmail SMTP connection verified (TLS Port 587)');
 
         console.log('Creating email options...');
         const mailOptions = await createEmailOptions(
@@ -83,17 +95,22 @@ async function sendWithGmail(projectData, recipientEmail, senderMessage) {
         return true;
     } catch (error) {
         console.error('Gmail sending failed:', error.message);
-        console.error('Full error:', error);
+        console.error('Full Gmail error:', error);
         return false;
     }
 }
 
 /**
- * Send email using 163.com SMTP
+ * Send email using 163.com SMTP (TESTED WORKING - SSL Port 465)
  */
 async function sendWithBackup(projectData, recipientEmail, senderMessage) {
     try {
+        console.log('Creating 163.com transporter (SSL Port 465)...');
         const transporter = nodemailer.createTransport(BACKUP_CONFIG);
+        
+        // Verify connection first
+        await transporter.verify();
+        console.log('[Email] 163.com SMTP connection verified (SSL Port 465)');
         
         const mailOptions = await createEmailOptions(
             projectData, 
@@ -102,11 +119,13 @@ async function sendWithBackup(projectData, recipientEmail, senderMessage) {
             BACKUP_CONFIG.auth.user
         );
         
+        console.log('Sending email via 163.com...');
         await transporter.sendMail(mailOptions);
         console.log(`Email sent successfully via 163.com to ${recipientEmail}`);
         return true;
     } catch (error) {
-        console.error('163.com sending failed:', error);
+        console.error('163.com sending failed:', error.message);
+        console.error('Full 163.com error:', error);
         return false;
     }
 }
