@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Image Library — Minimal Shell v2.20.6</title>
-  <link rel="stylesheet" href="styles.css?v=2.20.6&bust=20250910106000" />
+  <title>Image Library — Minimal Shell v1.0.0</title>
+  <link rel="stylesheet" href="styles.css?v=1.0.0&bust=20250910106000" />
 </head>
 <body>
   <div class="app">
@@ -26,7 +26,7 @@
       </nav>
 
       <div class="version-wrapper">
-          <span class="version">v2.20.6</span>
+          <span class="version" id="app-version">v1.0.0</span>
       </div>
 
       <div class="sidebar__footer">
@@ -526,6 +526,17 @@
 
   <script>
     // --- Constants & State ---
+    // Application Version - Increment for each update
+    const APP_VERSION = '1.0.0';
+    
+    // Update version display dynamically
+    const versionElement = document.getElementById('app-version');
+    if (versionElement) {
+        versionElement.textContent = `v${APP_VERSION}`;
+    }
+    // Update page title
+    document.title = `Image Library — Minimal Shell v${APP_VERSION}`;
+
     const API_URL = 'http://localhost:3000';
     const navLinks = {
         library: document.getElementById('nav-library'),
