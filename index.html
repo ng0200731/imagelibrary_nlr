@@ -1168,16 +1168,25 @@
         updateLoadMoreButton(loadedImages.length, startIndex + pageImages.length);
     }
 
-    // Update or add "Load More" button
+    // Update or add "Load More" and "Load All" buttons
     function updateLoadMoreButton(totalImages, displayedCount) {
-        // Remove existing button if any
-        const existingButton = document.getElementById('load-more-btn');
-        if (existingButton) {
-            existingButton.remove();
+        // Remove existing buttons if any
+        const existingLoadMoreBtn = document.getElementById('load-more-btn');
+        const existingLoadAllBtn = document.getElementById('load-all-btn');
+        if (existingLoadMoreBtn) {
+            existingLoadMoreBtn.remove();
+        }
+        if (existingLoadAllBtn) {
+            existingLoadAllBtn.remove();
         }
 
-        // Only show button if there are more images to load
+        // Only show buttons if there are more images to load
         if (displayedCount < totalImages) {
+            // Create button container
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'load-buttons-container';
+            
+            // Load More button
             const loadMoreBtn = document.createElement('button');
             loadMoreBtn.id = 'load-more-btn';
             loadMoreBtn.className = 'load-more-button';
@@ -1185,7 +1194,19 @@
             loadMoreBtn.addEventListener('click', () => {
                 loadMoreImages();
             });
-            libraryGrid.appendChild(loadMoreBtn);
+            buttonContainer.appendChild(loadMoreBtn);
+            
+            // Load All button
+            const loadAllBtn = document.createElement('button');
+            loadAllBtn.id = 'load-all-btn';
+            loadAllBtn.className = 'load-all-button';
+            loadAllBtn.textContent = 'Load All (but it takes time)';
+            loadAllBtn.addEventListener('click', () => {
+                loadAllImages();
+            });
+            buttonContainer.appendChild(loadAllBtn);
+            
+            libraryGrid.appendChild(buttonContainer);
         }
     }
 
@@ -1209,6 +1230,160 @@
 
         const currentSearchTags = searchTags.map(tag => tag.text);
         displayImagePage(loadedImages, currentSearchTags);
+    }
+
+    // Load all remaining images
+    function loadAllImages() {
+        // Recalculate images per row in case window was resized
+        calculateImagesPerRow();
+        
+        const loadedImages = libraryImages
+            .map((libImg, idx) => {
+                const originalImage = allImagesToDisplay.find(img => img.id === libImg.id);
+                if (!originalImage || !libImg.loaded) return null;
+                return {
+                    image: originalImage,
+                    index: idx,
+                    imageSrc: libImg.src
+                };
+            })
+            .filter(item => item !== null);
+
+        const currentSearchTags = searchTags.map(tag => tag.text);
+        
+        // Clear grid and display all images
+        libraryGrid.innerHTML = '';
+        
+        // Display all images
+        loadedImages.forEach(({ image, index, imageSrc }) => {
+            const card = document.createElement('div');
+            card.className = 'preview-card library-card';
+            card.dataset.imageId = image.id;
+
+            const img = document.createElement('img');
+            img.src = imageSrc;
+
+            img.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleImageSelection(image.id, card);
+            });
+
+            img.style.cursor = 'pointer';
+            if (isPoolView) {
+                card.style.cursor = 'pointer';
+            }
+
+            card.appendChild(img);
+
+            if (image.width || image.length) {
+                const dimensionTooltip = document.createElement('div');
+                dimensionTooltip.className = 'dimension-tooltip';
+                const widthText = image.width ? `Width: ${image.width}` : '';
+                const lengthText = image.length ? `Length: ${image.length}` : '';
+                const separator = (widthText && lengthText) ? ' | ' : '';
+                dimensionTooltip.textContent = widthText + separator + lengthText;
+                card.appendChild(dimensionTooltip);
+            }
+
+            const eyeIcon = document.createElement('div');
+            eyeIcon.className = 'image-preview-eye';
+            eyeIcon.textContent = '1:1';
+            eyeIcon.title = 'Preview full size image';
+
+            eyeIcon.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const libraryTitle = document.querySelector('#page-library .title');
+                const isSelectionPoolView = isPoolView || (libraryTitle && libraryTitle.textContent.includes('Selection Pool'));
+
+                if (isSelectionPoolView) {
+                    showSelectionPoolPreview(image, allImagesToDisplay, index);
+                } else {
+                    showImagePreviewOverlay(imageSrc, image);
+                }
+            });
+
+            card.appendChild(eyeIcon);
+
+            if (isPoolView) {
+                const bookletIcon = document.createElement('div');
+                bookletIcon.className = 'image-preview-booklet';
+                bookletIcon.textContent = '📖';
+                bookletIcon.title = 'Open lightbox with navigation';
+
+                bookletIcon.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openLibraryLightbox(index);
+                });
+
+                card.appendChild(bookletIcon);
+            }
+
+            const matchingTags = getMatchingTags(image.tags || [], currentSearchTags);
+            const isTagSelected = tagSelectedImages.includes(image.id);
+            const allImageTags = image.tags || [];
+            
+            const objectivePrefixes = ['width:', 'length:', 'book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'remark:', 'brand:', 'color:'];
+            const subjectiveTags = allImageTags.filter(tag => {
+                const tagLower = tag.toLowerCase();
+                return !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
+            });
+
+            if (subjectiveTags.length > 0) {
+                const tagOverlay = document.createElement('div');
+                tagOverlay.className = 'tag-overlay';
+
+                const matchingSubjectiveTags = matchingTags.filter(tag => {
+                    const tagLower = tag.toLowerCase();
+                    return !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
+                });
+
+                if (matchingSubjectiveTags.length > 0) {
+                    tagOverlay.classList.add('has-matches');
+                }
+
+                tagOverlay.textContent = subjectiveTags.slice(0, 3).join(', ');
+                if (subjectiveTags.length > 3) {
+                    tagOverlay.textContent += ` +${subjectiveTags.length - 3}`;
+                }
+
+                card.appendChild(tagOverlay);
+            }
+
+            const wasAlreadySelected = selectedImages.includes(image.id);
+            const hasMatchingTags = currentSearchTags.length > 0 && matchingTags.length > 0;
+
+            if (wasAlreadySelected || hasMatchingTags) {
+                card.classList.add('selected');
+
+                if (isPoolView) {
+                    card.classList.add('pool-view');
+                }
+
+                if (isTagSelected) {
+                    card.classList.add('tag-selection');
+                } else if (hasMatchingTags) {
+                    card.classList.add('tag-selection');
+                } else if (wasAlreadySelected) {
+                    card.classList.add('manual-selection');
+                }
+
+                if (!wasAlreadySelected) {
+                    selectedImages.push(image.id);
+                }
+            }
+
+            libraryGrid.appendChild(card);
+        });
+        
+        // Update currentPage to reflect that all images are displayed
+        const imagesToShow = imagesPerRow * ROWS_PER_PAGE;
+        currentPage = Math.ceil(loadedImages.length / imagesToShow) - 1;
+        
+        // Remove buttons since all images are now loaded
+        updateLoadMoreButton(loadedImages.length, loadedImages.length);
     }
     
     // Recalculate images per row on window resize
