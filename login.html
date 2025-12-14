@@ -3,31 +3,56 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Image Library — Login v2.20.4</title>
-  <link rel="stylesheet" href="styles.css?v=2.20.4&bust=20250910104000" />
+  <title>Image Library — Login</title>
   <style>
+    * { box-sizing: border-box; }
+    
+    /* Reset button styles completely */
+    button.login-button,
+    button#send-code-btn,
+    button#verify-code-btn,
+    button#back-to-email-btn {
+      all: unset;
+      box-sizing: border-box;
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #fff;
+      color: #000;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.2;
+      font-size: 12px;
+    }
+    
     .login-container {
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background: #f5f5f5;
+      background: #fff;
+      padding: 20px;
     }
     
     .login-card {
-      background: white;
+      background: #fff;
       padding: 40px;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border: 1px solid #000;
       width: 100%;
-      max-width: 400px;
+      max-width: 450px;
     }
     
     .login-title {
       text-align: center;
       margin-bottom: 30px;
-      font-size: 24px;
-      font-weight: bold;
+      font-size: 20px;
+      font-weight: 600;
+      color: #000;
     }
     
     .login-form {
@@ -44,70 +69,108 @@
     
     .form-label {
       font-weight: 500;
-      font-size: 14px;
+      font-size: 12px;
+      color: #000;
     }
     
     .form-input {
-      padding: 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 16px;
+      padding: 8px 12px;
+      border: 1px solid #000;
+      background: #fff;
+      color: #000;
+      font-size: 12px;
+      font-family: inherit;
+      width: 100%;
     }
     
     .form-input:focus {
       outline: none;
-      border-color: #007bff;
+      border-color: #000;
+      background: #fff;
+      color: #000;
+    }
+    
+    .form-input::placeholder {
+      color: #999;
     }
     
     .login-button {
-      background: #007bff;
-      color: white;
-      border: none;
-      padding: 15px 25px;
-      border-radius: 6px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
+      appearance: none;
+      background: #000 !important;
+      color: #fff !important;
+      border: 1px solid #000 !important;
+      padding: 8px 12px !important;
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
       transition: all 0.2s ease;
       width: 100%;
       margin-bottom: 10px;
-      min-height: 50px;
-      display: flex;
+      min-height: 36px;
+      display: flex !important;
       align-items: center;
       justify-content: center;
       gap: 8px;
+      font-family: inherit;
     }
 
-    .login-button:hover {
-      background: #0056b3;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+    .login-button:not(:disabled):not(.loading):not(.secondary) {
+      background: #000 !important;
+      color: #fff !important;
+      border: 1px solid #000 !important;
     }
 
-    .login-button:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+    .login-button:hover:not(:disabled):not(.loading),
+    .login-button:focus:not(:disabled):not(.loading) {
+      outline: none;
+      background: #fff !important;
+      color: #000 !important;
+      border: 1px solid #000 !important;
+    }
+
+    .login-button:active:not(:disabled):not(.loading) {
+      transform: translateY(1px);
     }
 
     .login-button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
+      background: #ccc !important;
+      color: #666 !important;
+      border-color: #ccc !important;
+      cursor: not-allowed !important;
+      opacity: 0.5;
     }
 
     .login-button.loading {
-      background: #6c757d;
-      cursor: wait;
+      background: #666 !important;
+      border-color: #666 !important;
+      cursor: wait !important;
+    }
+    
+    .login-button.secondary {
+      background: #fff !important;
+      color: #000 !important;
+      border: 1px solid #000 !important;
+    }
+    
+    .login-button.secondary:hover:not(:disabled):not(.loading),
+    .login-button.secondary:focus:not(:disabled):not(.loading) {
+      background: #000 !important;
+      color: #fff !important;
+      border: 1px solid #000 !important;
     }
 
     .spinner {
-      width: 16px;
-      height: 16px;
+      width: 14px;
+      height: 14px;
       border: 2px solid #ffffff;
       border-top: 2px solid transparent;
       border-radius: 50%;
       animation: spin 1s linear infinite;
+    }
+    
+    .login-button.secondary .spinner {
+      border-color: #000;
+      border-top-color: transparent;
     }
 
     @keyframes spin {
@@ -117,27 +180,28 @@
     
     .status-message {
       padding: 12px;
-      border-radius: 4px;
+      border: 1px solid #000;
       text-align: center;
       margin-bottom: 20px;
+      font-size: 12px;
     }
     
     .status-success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
+      background: #fff;
+      color: #000;
+      border-color: #000;
     }
     
     .status-error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
+      background: #fff;
+      color: #000;
+      border-color: #dc3545;
     }
     
     .status-info {
-      background: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
+      background: #fff;
+      color: #000;
+      border-color: #000;
     }
     
     .hidden {
@@ -147,8 +211,9 @@
     .step-indicator {
       text-align: center;
       margin-bottom: 20px;
-      font-size: 14px;
+      font-size: 12px;
       color: #666;
+      font-weight: 500;
     }
   </style>
 </head>
@@ -180,7 +245,7 @@
             <input type="text" id="code-input" class="form-input" placeholder="Enter 6-digit code" maxlength="6" required>
           </div>
           <button type="submit" id="verify-code-btn" class="login-button">🔐 Verify & Login</button>
-          <button type="button" id="back-to-email-btn" class="login-button" style="background: #6c757d; margin-top: 10px;">← Back to Email</button>
+          <button type="button" id="back-to-email-btn" class="login-button secondary">← Back to Email</button>
         </form>
       </div>
     </div>
@@ -234,6 +299,7 @@
       if (loading) {
         button.disabled = true;
         button.classList.add('loading');
+        const isSecondary = button.classList.contains('secondary');
         button.innerHTML = `<div class="spinner"></div> Loading...`;
       } else {
         button.disabled = false;
