@@ -22,6 +22,7 @@
         <a id="nav-upload" class="menu__item" href="#">Upload Image</a>
         <a id="nav-project" class="menu__item" href="#">Project</a>
         <a id="nav-tags" class="menu__item" href="#">Tags</a>
+        <a id="nav-admin" class="menu__item is-hidden" href="#">Admin Panel</a>
         <a id="nav-settings" class="menu__item" href="#" onclick="openSettings()">Settings</a>
       </nav>
 
@@ -241,6 +242,49 @@
           </div>
           <div id="project-list" class="project-list">
             <p class="text">No projects created yet. Select images in the Image Library and click "Add to Project" to create your first project.</p>
+          </div>
+        </section>
+      </div>
+
+      <!-- Admin Panel Page -->
+      <div id="page-admin" class="page is-hidden">
+        <header class="content__header">
+          <div class="header-content-wrapper">
+            <div class="header-left">
+              <h1 class="title">Admin Panel - User Management</h1>
+            </div>
+            <div class="header-right">
+              <div id="user-email-display-admin" class="user-email-display"></div>
+            </div>
+          </div>
+        </header>
+        <section class="panel">
+          <div id="admin-message" class="admin-message hidden"></div>
+          
+          <div class="users-section">
+            <div class="section-header">
+              User Access Management
+            </div>
+            
+            <div id="admin-loading" class="admin-loading">
+              Loading users...
+            </div>
+            
+            <div id="admin-users-content" class="hidden">
+              <table class="users-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Registration Date</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-tbody">
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>
@@ -544,6 +588,7 @@
         library: document.getElementById('nav-library'),
         upload: document.getElementById('nav-upload'),
         project: document.getElementById('nav-project'),
+        admin: document.getElementById('nav-admin'),
     };
 
     // Broken image tracking
@@ -591,6 +636,7 @@
         library: document.getElementById('page-library'),
         upload: document.getElementById('page-upload'),
         project: document.getElementById('page-project'),
+        admin: document.getElementById('page-admin'),
     };
     const fileInput = document.getElementById('file-input');
     const previewGrid = document.getElementById('preview-grid');
@@ -1894,6 +1940,8 @@
             displayLibraryImages();
         } else if (pageName === 'project') {
             displayProjects();
+        } else if (pageName === 'admin') {
+            loadAdminUsers();
         }
     }
 
@@ -4061,12 +4109,15 @@
             const result = await response.json();
             currentUser = result.user;
 
-            // Show/hide settings based on admin role
+            // Show/hide admin menu item based on admin role
+            const adminLink = document.getElementById('nav-admin');
             const settingsLink = document.getElementById('nav-settings');
             if (currentUser.role === 'admin') {
-                settingsLink.style.display = 'block';
+                if (adminLink) adminLink.classList.remove('is-hidden');
+                if (settingsLink) settingsLink.style.display = 'block';
             } else {
-                settingsLink.style.display = 'none';
+                if (adminLink) adminLink.classList.add('is-hidden');
+                if (settingsLink) settingsLink.style.display = 'none';
             }
 
             // Update email display in headers
@@ -4086,7 +4137,8 @@
         const emailDisplays = [
             document.getElementById('user-email-display'),
             document.getElementById('user-email-display-upload'),
-            document.getElementById('user-email-display-project')
+            document.getElementById('user-email-display-project'),
+            document.getElementById('user-email-display-admin')
         ];
 
         const email = currentUser ? currentUser.email : '';
@@ -4101,10 +4153,89 @@
 
     function openSettings() {
         if (currentUser && currentUser.role === 'admin') {
-            window.location.href = '/admin.html';
+            navigateTo('admin');
         } else {
             alert('Admin access required');
         }
+    }
+
+    // Admin Panel Functions
+    async function loadAdminUsers() {
+        const sessionToken = localStorage.getItem('sessionToken');
+        const adminLoading = document.getElementById('admin-loading');
+        const adminUsersContent = document.getElementById('admin-users-content');
+        const adminMessage = document.getElementById('admin-message');
+        
+        if (!sessionToken) {
+            window.location.href = '/login.html';
+            return;
+        }
+
+        adminLoading.classList.remove('hidden');
+        adminUsersContent.classList.add('hidden');
+        adminMessage.classList.add('hidden');
+
+        try {
+            const response = await fetch(`${API_URL}/admin/users`, {
+                headers: { 'Authorization': `Bearer ${sessionToken}` }
+            });
+            
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('Failed to load users');
+            }
+            
+            const users = await response.json();
+            displayAdminUsers(users);
+            
+        } catch (error) {
+            console.error('Error loading users:', error);
+            showAdminMessage('Failed to load users', 'error');
+        } finally {
+            adminLoading.classList.add('hidden');
+            adminUsersContent.classList.remove('hidden');
+        }
+    }
+
+    function displayAdminUsers(users) {
+        const usersTbody = document.getElementById('admin-users-tbody');
+        usersTbody.innerHTML = '';
+        
+        users.forEach(user => {
+            const row = document.createElement('tr');
+            
+            const statusClass = `status-${user.status}`;
+            
+            row.innerHTML = `
+                <td>${user.email}</td>
+                <td><span class="status-badge ${statusClass}">${user.status}</span></td>
+                <td>${formatAdminDate(user.created_at)}</td>
+                <td>${formatAdminDate(user.last_login)}</td>
+                <td>-</td>
+            `;
+            
+            usersTbody.appendChild(row);
+        });
+    }
+
+    function formatAdminDate(dateString) {
+        if (!dateString) return 'Never';
+        return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+
+    function showAdminMessage(text, type = 'success') {
+        const adminMessage = document.getElementById('admin-message');
+        adminMessage.textContent = text;
+        adminMessage.className = `admin-message ${type}`;
+        adminMessage.classList.remove('hidden');
+        
+        setTimeout(() => {
+            adminMessage.classList.add('hidden');
+        }, 5000);
     }
 
     async function logout() {
@@ -4803,6 +4934,16 @@
     navLinks.library.addEventListener('click', (e) => { e.preventDefault(); navigateTo('library'); });
     navLinks.upload.addEventListener('click', (e) => { e.preventDefault(); navigateTo('upload'); });
     navLinks.project.addEventListener('click', (e) => { e.preventDefault(); navigateTo('project'); });
+    if (navLinks.admin) {
+        navLinks.admin.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            if (currentUser && currentUser.role === 'admin') {
+                navigateTo('admin'); 
+            } else {
+                alert('Admin access required');
+            }
+        });
+    }
 
     // Initialize: Load images when page first loads (if library page is visible)
     if (pages.library && !pages.library.classList.contains('is-hidden')) {
