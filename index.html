@@ -281,6 +281,26 @@
         </div>
       </div>
 
+      <!-- Warning Dialog for No Images Selected -->
+      <div id="no-images-warning-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Please select images to upload.</p>
+          <div class="modal-buttons">
+            <button id="ok-no-images-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning Dialog for Missing Dimensions -->
+      <div id="dimension-warning-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Please fill in at least one dimension field (width or length) before uploading.</p>
+          <div class="modal-buttons">
+            <button id="ok-dimension-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
+
 
 
       <!-- Loading Overlay -->
@@ -4507,6 +4527,16 @@
                 if (subjInput) {
                     subjInput.focus();
                 }
+            } else if (noImagesWarningModal && !noImagesWarningModal.classList.contains('is-hidden')) {
+                noImagesWarningModal.classList.add('is-hidden');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            } else if (dimensionWarningModal && !dimensionWarningModal.classList.contains('is-hidden')) {
+                dimensionWarningModal.classList.add('is-hidden');
+                if (objWidthInput) {
+                    objWidthInput.focus();
+                }
             }
         }
     });
@@ -4517,6 +4547,10 @@
     const goToLibraryBtn = document.getElementById('go-to-library-btn');
     const feelingsWarningModal = document.getElementById('feelings-warning-modal');
     const okFeelingsBtn = document.getElementById('ok-feelings-btn');
+    const noImagesWarningModal = document.getElementById('no-images-warning-modal');
+    const okNoImagesBtn = document.getElementById('ok-no-images-btn');
+    const dimensionWarningModal = document.getElementById('dimension-warning-modal');
+    const okDimensionBtn = document.getElementById('ok-dimension-btn');
 
     function clearUploadUI() {
         previewGrid.innerHTML = '';
@@ -4552,6 +4586,28 @@
             // Focus on subjective input
             if (subjInput) {
                 subjInput.focus();
+            }
+        });
+    }
+
+    // Handle OK button for no images warning modal
+    if (okNoImagesBtn && noImagesWarningModal) {
+        okNoImagesBtn.addEventListener('click', () => {
+            noImagesWarningModal.classList.add('is-hidden');
+            // Focus on file input
+            if (fileInput) {
+                fileInput.click();
+            }
+        });
+    }
+
+    // Handle OK button for dimension warning modal
+    if (okDimensionBtn && dimensionWarningModal) {
+        okDimensionBtn.addEventListener('click', () => {
+            dimensionWarningModal.classList.add('is-hidden');
+            // Focus on width input
+            if (objWidthInput) {
+                objWidthInput.focus();
             }
         });
     }
@@ -4619,7 +4675,11 @@
         const allTags = [...subjTags, ...objTags];
 
         if (filesToUpload.length === 0) {
-            return alert('Please select images to upload.');
+            // Show warning modal instead of alert
+            if (noImagesWarningModal) {
+                noImagesWarningModal.classList.remove('is-hidden');
+            }
+            return;
         }
 
         // Validate that at least one subjective tag (feeling) is added
@@ -4633,10 +4693,9 @@
 
         // Validate that at least one dimension field (width or length) is filled
         if (!widthValue && !lengthValue && !hasWidthInChips && !hasLengthInChips) {
-            alert('Please fill in at least one dimension field (width or length) before uploading.');
-            // Focus on width input
-            if (objWidthInput) {
-                objWidthInput.focus();
+            // Show warning modal instead of alert
+            if (dimensionWarningModal) {
+                dimensionWarningModal.classList.remove('is-hidden');
             }
             return;
         }
