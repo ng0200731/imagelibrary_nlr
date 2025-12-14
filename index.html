@@ -1323,24 +1323,37 @@
                     card.appendChild(bookletIcon);
                 }
 
-                // Add tag overlay - show tags on ALL images
+                // Add tag overlay - show only subjective tags (exclude objective metadata like width/length)
                 const matchingTags = getMatchingTags(image.tags || [], currentSearchTags);
                 const isTagSelected = tagSelectedImages.includes(image.id);
-                const imageTags = image.tags || [];
+                const allImageTags = image.tags || [];
+                
+                // Filter out objective metadata tags (width, length, book, page, row, column, type, material, remark, brand, color)
+                const objectivePrefixes = ['width:', 'length:', 'book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'remark:', 'brand:', 'color:'];
+                const subjectiveTags = allImageTags.filter(tag => {
+                    const tagLower = tag.toLowerCase();
+                    return !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
+                });
 
-                if (imageTags.length > 0) {
+                if (subjectiveTags.length > 0) {
                     const tagOverlay = document.createElement('div');
                     tagOverlay.className = 'tag-overlay';
 
+                    // Check if any of the matching tags are subjective
+                    const matchingSubjectiveTags = matchingTags.filter(tag => {
+                        const tagLower = tag.toLowerCase();
+                        return !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
+                    });
+
                     // Always show all tags (or first 3 + count), but highlight if there are matches
-                    if (matchingTags.length > 0) {
+                    if (matchingSubjectiveTags.length > 0) {
                         tagOverlay.classList.add('has-matches');
                     }
 
-                    // Show first 3 tags for all images
-                    tagOverlay.textContent = imageTags.slice(0, 3).join(', ');
-                    if (imageTags.length > 3) {
-                        tagOverlay.textContent += ` +${imageTags.length - 3}`;
+                    // Show first 3 subjective tags
+                    tagOverlay.textContent = subjectiveTags.slice(0, 3).join(', ');
+                    if (subjectiveTags.length > 3) {
+                        tagOverlay.textContent += ` +${subjectiveTags.length - 3}`;
                     }
 
                     card.appendChild(tagOverlay);
