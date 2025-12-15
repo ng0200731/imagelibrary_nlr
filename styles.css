@@ -844,6 +844,10 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 .subj-freq-item:hover {
   background: #e6f0ff;
 }
+.subj-freq-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .subj-freq-item__label {
   margin-right: 8px;
 }
@@ -853,6 +857,18 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 }
 .subj-inline .hint { font-size: 10px; color: #000; }
 .subj-inline .chips { justify-content: flex-start; }
+
+.subj-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 4000;
+}
 .subj-inline .chips .chip { border-style: dashed; font-style: italic; }
 
 /* Chip selection (for delete) */

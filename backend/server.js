@@ -312,9 +312,9 @@ app.post('/upload', upload.array('images'), (req, res) => {
             }
             const imageId = imageResult.lastInsertRowid;
 
-            // Link all original tags (includes both metadata and regular tags)
-            if (tags && tags.length > 0) {
-                for (const tag of tags) {
+            // Link only "real" tags (subjective feelings), not metadata fields
+            if (regularTags && regularTags.length > 0) {
+                for (const tag of regularTags) {
                     insertTag.run(tag);
                     const tagRow = getTagId.get(tag);
                     if (tagRow) {
@@ -334,9 +334,9 @@ app.post('/upload', upload.array('images'), (req, res) => {
         // Execute the transaction with the data
         uploadTransaction(files, metadata, regularTags);
 
-        // Persist subjective feelings usage (tags without a colon are treated as subjective)
+        // Persist subjective feelings usage (only "real" tags / feelings)
         try {
-            const subjectiveTags = (tags || []).filter(tag => typeof tag === 'string' && !tag.includes(':'));
+            const subjectiveTags = (regularTags || []).filter(tag => typeof tag === 'string');
             incrementFeelingUsage(subjectiveTags, userEmail);
         } catch (err) {
             console.error('Error incrementing feeling usage after upload:', err);

@@ -793,6 +793,7 @@
 
     // Track frequency of subjective (feeling) tags in-memory
     const subjFreqMap = {};
+    let subjToastTimeout = null;
 
     // Objective metadata inputs
     const objBookInput = document.getElementById('obj-book');
@@ -2217,6 +2218,42 @@
         }
     }
 
+    function showSubjToast(message) {
+        if (!message) return;
+        const existing = document.getElementById('subj-toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.id = 'subj-toast';
+        toast.className = 'subj-toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        if (subjToastTimeout) clearTimeout(subjToastTimeout);
+        subjToastTimeout = setTimeout(() => {
+            toast.remove();
+        }, 5000);
+    }
+
+    function getCurrentFeelingTags() {
+        if (!subjChips) return [];
+        return Array.from(subjChips.querySelectorAll('.chip')).map(c =>
+            c.textContent.replace(/[×x]$/, '').trim().toLowerCase()
+        );
+    }
+
+    function refreshSubjFreqDisabledState() {
+        if (!subjFreqList) return;
+        const currentTags = new Set(getCurrentFeelingTags());
+        Array.from(subjFreqList.querySelectorAll('.subj-freq-item')).forEach(row => {
+            const label = (row.dataset.label || '').toLowerCase();
+            const isUsed = currentTags.has(label);
+            if (isUsed) {
+                row.classList.add('disabled');
+            } else {
+                row.classList.remove('disabled');
+            }
+        });
+    }
+
     function updateSubjFreqList() {
         if (!subjFreqList) return;
         // Convert map to array and sort by count desc, then label asc
@@ -2241,13 +2278,21 @@
             row.appendChild(spanLabel);
             row.appendChild(spanCount);
 
-            // Clicking a frequent item adds it again to chips
+            // Clicking a frequent item adds it again to chips (once per current feelings)
             row.addEventListener('click', () => {
-                addSubjChip(label);
+                if (row.classList.contains('disabled')) {
+                    showSubjToast('Tag already added');
+                    return;
+                }
+                const added = addSubjChip(label);
+                if (added !== false) {
+                    refreshSubjFreqDisabledState();
+                }
             });
 
             subjFreqList.appendChild(row);
         });
+        refreshSubjFreqDisabledState();
     }
 
     async function fetchSubjFrequencies() {
@@ -2306,8 +2351,14 @@
 
     function addSubjChip(label) {
         const text = (label || '').toLowerCase().trim();
-        if (!text) return;
-        if ([...subjChips.querySelectorAll('.chip')].some(c => c.textContent.replace(/[×x]$/, '').trim() === text)) return;
+        if (!text) return false;
+        const exists = [...subjChips.querySelectorAll('.chip')].some(
+            c => c.textContent.replace(/[×x]$/, '').trim().toLowerCase() === text
+        );
+        if (exists) {
+            showSubjToast('Tag already added');
+            return false;
+        }
         const chip = document.createElement('span');
         chip.className = 'chip is-subjective';
         chip.textContent = text;
@@ -2317,9 +2368,15 @@
         x.type = 'button';
         x.className = 'x';
         x.textContent = '×';
-        x.addEventListener('click', (ev) => { ev.stopPropagation(); chip.remove(); });
+        x.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            chip.remove();
+            refreshSubjFreqDisabledState();
+        });
         chip.appendChild(x);
         subjChips.appendChild(chip);
+        refreshSubjFreqDisabledState();
+        return true;
     }
 
     function handleSubjCommit() {
