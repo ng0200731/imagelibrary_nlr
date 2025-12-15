@@ -966,6 +966,7 @@
     let currentPreviewIndex = 0; // Current image index in preview
     let isSelectionPoolPreview = false; // Track if we're in Selection Pool preview mode
     let pendingAddTags = new Set(); // Track tags added in lightbox before saving
+    let lightboxDirty = false; // Track if any tag was added or removed in lightbox
 
     // --- Function Definitions ---
 
@@ -2359,6 +2360,30 @@
         }
     }
 
+    async function persistFeelingsUsageDecrement(feelings) {
+        const payload = Array.isArray(feelings) ? feelings : [];
+        if (payload.length === 0) return;
+        try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+            const response = await fetch(`${API_URL}/feelings/usage/decrement`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ feelings: payload })
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to decrement feelings: ${response.status} ${response.statusText}`);
+            }
+        } catch (err) {
+            console.error('Error decrementing feelings usage:', err);
+        }
+    }
+
     function addSubjChip(label) {
         const text = (label || '').toLowerCase().trim();
         if (!text) return false;
@@ -2497,6 +2522,7 @@
         const freqFloating = document.getElementById('lightbox-freq-floating');
         if (freqFloating) freqFloating.remove();
         pendingAddTags.clear();
+        lightboxDirty = false;
         if (lightboxSaveBtn) lightboxSaveBtn.classList.add('is-hidden');
     }
 
@@ -2504,6 +2530,7 @@
 
     function openLibraryLightbox(index) {
         pendingAddTags.clear();
+        lightboxDirty = false;
         currentImageIndex = index;
         imageSources = libraryImages.map(img => img.src);
         modalImg.src = imageSources[currentImageIndex];
@@ -2959,7 +2986,13 @@
             await updateImageTags(imageId, newTags);
             image.tags = newTags;
             pendingAddTags.delete(tagText);
+            lightboxDirty = true;
             displayLightboxTags(currentPreviewIndex);
+            // Update feelings frequency if this is a subjective tag
+            if (!isObjectiveTag(tagText)) {
+                await persistFeelingsUsageDecrement([tagText]);
+                await fetchSubjFrequencies();
+            }
         } catch (err) {
             console.error('Failed to remove tag from image:', err);
             alert('Failed to remove tag. Please try again.');
@@ -2981,6 +3014,7 @@
             return false;
         }
         pendingAddTags.add(cleaned);
+        lightboxDirty = true;
         displayLightboxTags(currentPreviewIndex);
         renderLightboxFreqFloating(imageId);
         return true;
@@ -2990,7 +3024,14 @@
         const image = libraryImages.find(img => img.id === imageId);
         if (!image) return;
         if (pendingAddTags.size === 0) {
-            showLightboxToast('Nothing to save');
+            // No new tags, but if something changed (e.g., removals) and user clicked Save,
+            // just close when requested instead of saying "Nothing to save".
+            if (closeAfterSave && lightboxDirty) {
+                lightboxDirty = false;
+                hideModal();
+            } else if (!lightboxDirty) {
+                showLightboxToast('Nothing to save');
+            }
             return;
         }
         const newTags = [...new Set([...(image.tags || []), ...pendingAddTags])];
@@ -3004,6 +3045,7 @@
                 await fetchSubjFrequencies();
             }
             pendingAddTags.clear();
+            lightboxDirty = false;
             displayLightboxTags(currentPreviewIndex);
             renderLightboxFreqFloating(imageId);
             showLightboxToast('Tags saved');

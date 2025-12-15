@@ -181,6 +181,32 @@ function incrementFeelingUsage(tags, userEmail) {
     txn(unique);
 }
 
+// Decrement feeling usage counts (subjective tags) for a user
+function decrementFeelingUsage(tags, userEmail) {
+    if (!tags || tags.length === 0 || !userEmail) return;
+    const normalized = tags
+        .map(t => String(t || '').trim().toLowerCase())
+        .filter(t => t.length > 0);
+    if (normalized.length === 0) return;
+    const unique = [...new Set(normalized)];
+
+    console.log('decrementFeelingUsage -> user:', userEmail, 'tags:', unique);
+
+    const updateStmt = db.prepare(`
+        UPDATE feeling_usage
+        SET count = CASE WHEN count > 0 THEN count - 1 ELSE 0 END,
+            updated_at = datetime('now')
+        WHERE name = ? AND user_email = ?
+    `);
+
+    const txn = db.transaction((items) => {
+        for (const name of items) {
+            updateStmt.run(name, userEmail);
+        }
+    });
+    txn(unique);
+}
+
 // --- API Endpoints ---
 
 // 1. Upload Images
@@ -359,6 +385,37 @@ app.post('/upload', upload.array('images'), (req, res) => {
         console.error('Error details:', err);
         console.error('Stack trace:', err.stack);
         res.status(500).send(`An error occurred during upload: ${err.message}`);
+    }
+});
+
+// 1b. Feelings usage adjustment endpoints (add/remove outside of upload)
+app.post('/feelings/usage', (req, res) => {
+    try {
+        const user = getUserFromSession(req);
+        if (!user) {
+            return res.status(401).send('Authentication required');
+        }
+        const feelings = Array.isArray(req.body.feelings) ? req.body.feelings : [];
+        incrementFeelingUsage(feelings, user.email);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('Error incrementing feelings via /feelings/usage:', err);
+        res.status(500).json({ error: 'Failed to update feelings usage' });
+    }
+});
+
+app.post('/feelings/usage/decrement', (req, res) => {
+    try {
+        const user = getUserFromSession(req);
+        if (!user) {
+            return res.status(401).send('Authentication required');
+        }
+        const feelings = Array.isArray(req.body.feelings) ? req.body.feelings : [];
+        decrementFeelingUsage(feelings, user.email);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('Error decrementing feelings via /feelings/usage/decrement:', err);
+        res.status(500).json({ error: 'Failed to update feelings usage' });
     }
 });
 
