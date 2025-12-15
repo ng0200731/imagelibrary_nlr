@@ -160,6 +160,8 @@ function incrementFeelingUsage(tags, userEmail) {
     if (normalized.length === 0) return;
     const unique = [...new Set(normalized)];
 
+    console.log('incrementFeelingUsage -> user:', userEmail, 'tags:', unique);
+
     const insertStmt = db.prepare(`
         INSERT OR IGNORE INTO feeling_usage (name, user_email, count)
         VALUES (?, ?, 0)

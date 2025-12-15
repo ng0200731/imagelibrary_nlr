@@ -2296,10 +2296,6 @@
         x.addEventListener('click', (ev) => { ev.stopPropagation(); chip.remove(); });
         chip.appendChild(x);
         subjChips.appendChild(chip);
-
-        // Update frequency map and list (most-used at the top)
-        subjFreqMap[text] = (subjFreqMap[text] || 0) + 1;
-        updateSubjFreqList();
     }
 
     function handleSubjCommit() {
@@ -2307,9 +2303,6 @@
         const uniqueParts = [...new Set(parts.map(p => p.toLowerCase()))];
         uniqueParts.forEach(p => addSubjChip(p));
         subjInput.value = '';
-        if (uniqueParts.length > 0) {
-            persistFeelingsUsage(uniqueParts).then(() => fetchSubjFrequencies());
-        }
     }
 
     function handleObjCommit(input) {
@@ -5527,12 +5520,16 @@
         confirmModal.classList.add('is-hidden');
         clearUploadUI();
         uploadButton.disabled = false; // Re-enable
+        // Refresh persisted frequencies so the next add-more flow shows latest counts
+        fetchSubjFrequencies();
     });
 
     goToLibraryBtn.addEventListener('click', () => {
         confirmModal.classList.add('is-hidden');
         clearUploadUI();
         uploadButton.disabled = false; // Re-enable
+        // Refresh persisted frequencies before navigating back to library
+        fetchSubjFrequencies();
         navigateTo('library');
     });
 
@@ -5703,7 +5700,10 @@
             await displayLibraryImages();
 
             // Refresh frequency list based on newly saved tags
-            await fetchSubjFrequencies();
+            await fetchSubjFrequencies().then(() => {
+                const now = new Date().toISOString();
+                console.log(`[freq-refresh] Refreshed after upload at ${now}`);
+            });
 
             // On success, show the custom confirmation dialog
             confirmModal.classList.remove('is-hidden');
