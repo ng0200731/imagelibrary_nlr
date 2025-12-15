@@ -2419,6 +2419,8 @@
 
     function hideModal() {
         modal.classList.add('is-hidden');
+        const freqFloating = document.getElementById('lightbox-freq-floating');
+        if (freqFloating) freqFloating.remove();
     }
 
     // --- Library Lightbox Functions ---
@@ -2787,6 +2789,10 @@
             return;
         }
 
+        // Left column: tag list + add input (frequency panel floats separately)
+        const tagList = document.createElement('div');
+        tagList.className = 'lightbox-tag-list';
+
         // Create tag chips for lightbox
         imageTags.forEach(tagText => {
             const chip = document.createElement('span');
@@ -2811,10 +2817,10 @@
             });
             chip.appendChild(removeBtn);
 
-            lightboxTags.appendChild(chip);
+            tagList.appendChild(chip);
         });
 
-        // Add input + button for adding new tags in lightbox
+        // Add input for adding new tags in lightbox
         const addWrap = document.createElement('div');
         addWrap.className = 'lightbox-tag-add';
 
@@ -2837,7 +2843,10 @@
         });
 
         addWrap.appendChild(addInput);
+        lightboxTags.appendChild(tagList);
         lightboxTags.appendChild(addWrap);
+
+        renderLightboxFreqFloating(currentImage.id);
     }
 
     // Remove a single tag from an image with confirmation (used in lightbox)
@@ -2885,10 +2894,62 @@
             await updateImageTags(imageId, newTags);
             image.tags = newTags;
             displayLightboxTags(currentPreviewIndex);
+            renderLightboxFreqFloating(imageId);
         } catch (err) {
             console.error('Failed to add tag to image:', err);
             alert('Failed to add tag. Please try again.');
         }
+    }
+
+    function renderLightboxFreqFloating(imageId) {
+        // Prefer the preview overlay if it's visible; otherwise use the lightbox modal
+        const overlay = (imagePreviewOverlay && imagePreviewOverlay.classList.contains('show'))
+            ? imagePreviewOverlay
+            : document.getElementById('lightbox-modal');
+        if (!overlay) return;
+        // remove existing
+        const existing = document.getElementById('lightbox-freq-floating');
+        if (existing) existing.remove();
+
+        const panel = document.createElement('div');
+        panel.id = 'lightbox-freq-floating';
+        panel.className = 'lightbox-freq-floating';
+
+        const header = document.createElement('h4');
+        header.textContent = 'Frequently used';
+        panel.appendChild(header);
+
+        const list = document.createElement('div');
+        list.className = 'lightbox-freq-list';
+
+        const freqItems = Object.entries(subjFreqMap)
+            .map(([label, count]) => ({ label, count }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+        if (freqItems.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.color = '#ccc';
+            empty.textContent = 'No frequent tags yet';
+            list.appendChild(empty);
+        } else {
+            freqItems.forEach(({ label, count }) => {
+                const row = document.createElement('div');
+                row.className = 'lightbox-freq-item';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = label;
+                const countSpan = document.createElement('span');
+                countSpan.textContent = `×${count}`;
+                row.appendChild(nameSpan);
+                row.appendChild(countSpan);
+                row.addEventListener('click', () => {
+                    handleAddTagToImage(imageId, label);
+                });
+                list.appendChild(row);
+            });
+        }
+
+        panel.appendChild(list);
+        overlay.appendChild(panel);
     }
 
     // --- Selection and Project Management Functions ---
@@ -3681,6 +3742,12 @@
         previewOverlayImg.style.height = '';
         previewOverlayImg.style.maxWidth = '';
         previewOverlayImg.style.maxHeight = '';
+
+        // Remove floating frequency panel if present
+        const freqFloating = document.getElementById('lightbox-freq-floating');
+        if (freqFloating) {
+            freqFloating.remove();
+        }
     }
 
     // Show real-size overlay (strict 1:1 based on mm dimensions)
