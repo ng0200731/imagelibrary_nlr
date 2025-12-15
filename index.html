@@ -2256,6 +2256,30 @@
         }
     }
 
+    async function persistFeelingsUsage(feelings) {
+        const payload = Array.isArray(feelings) ? feelings : [];
+        if (payload.length === 0) return;
+        try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+            const response = await fetch(`${API_URL}/feelings/usage`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ feelings: payload })
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to persist feelings: ${response.status} ${response.statusText}`);
+            }
+        } catch (err) {
+            console.error('Error persisting feelings usage:', err);
+        }
+    }
+
     function addSubjChip(label) {
         const text = (label || '').toLowerCase().trim();
         if (!text) return;
@@ -2279,9 +2303,13 @@
     }
 
     function handleSubjCommit() {
-        const parts = subjInput.value.split(',');
-        parts.forEach(p => addSubjChip(p));
+        const parts = subjInput.value.split(',').map(p => p.trim()).filter(p => p.length > 0);
+        const uniqueParts = [...new Set(parts.map(p => p.toLowerCase()))];
+        uniqueParts.forEach(p => addSubjChip(p));
         subjInput.value = '';
+        if (uniqueParts.length > 0) {
+            persistFeelingsUsage(uniqueParts).then(() => fetchSubjFrequencies());
+        }
     }
 
     function handleObjCommit(input) {
@@ -5340,6 +5368,9 @@
             console.error('Error loading images on initial page load:', error);
         });
     }
+
+    // Always fetch persisted feeling frequencies on page load (refresh-safe)
+    fetchSubjFrequencies();
 
     // Broken image notification dismiss
     document.getElementById('dismiss-notification').addEventListener('click', () => {

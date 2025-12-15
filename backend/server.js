@@ -84,6 +84,18 @@ try {
     } else {
         console.log('✅ Database schema verified: projects table has ownership column');
     }
+
+    // Ensure feeling_usage table exists to persist subjective tag frequencies per user
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS feeling_usage (
+            name TEXT NOT NULL,
+            user_email TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (name, user_email)
+        )
+    `);
+    console.log('✅ Database schema verified: feeling_usage table exists');
 } catch (err) {
     console.error('Error checking/updating database schema:', err);
 }
@@ -137,6 +149,34 @@ function getUserFromSession(req) {
 function getUserEmailFromSession(req) {
     const user = getUserFromSession(req);
     return user ? user.email : null;
+}
+
+// Increment feeling usage counts (subjective tags) for a user
+function incrementFeelingUsage(tags, userEmail) {
+    if (!tags || tags.length === 0 || !userEmail) return;
+    const normalized = tags
+        .map(t => String(t || '').trim().toLowerCase())
+        .filter(t => t.length > 0);
+    if (normalized.length === 0) return;
+    const unique = [...new Set(normalized)];
+
+    const insertStmt = db.prepare(`
+        INSERT OR IGNORE INTO feeling_usage (name, user_email, count)
+        VALUES (?, ?, 0)
+    `);
+    const updateStmt = db.prepare(`
+        UPDATE feeling_usage
+        SET count = count + 1, updated_at = datetime('now')
+        WHERE name = ? AND user_email = ?
+    `);
+
+    const txn = db.transaction((items) => {
+        for (const name of items) {
+            insertStmt.run(name, userEmail);
+            updateStmt.run(name, userEmail);
+        }
+    });
+    txn(unique);
 }
 
 // --- API Endpoints ---
@@ -292,6 +332,14 @@ app.post('/upload', upload.array('images'), (req, res) => {
         // Execute the transaction with the data
         uploadTransaction(files, metadata, regularTags);
 
+        // Persist subjective feelings usage (tags without a colon are treated as subjective)
+        try {
+            const subjectiveTags = (tags || []).filter(tag => typeof tag === 'string' && !tag.includes(':'));
+            incrementFeelingUsage(subjectiveTags, userEmail);
+        } catch (err) {
+            console.error('Error incrementing feeling usage after upload:', err);
+        }
+
         console.log('Upload successful:', {
             files: files.length,
             metadata: metadata,
@@ -443,7 +491,8 @@ app.get('/tags', (req, res) => {
 });
 
 // 3b. Tag frequencies (subjective/objective combined) with level-based scope
-// Level 3: aggregate across all users; other levels: only their own images
+// This now reads from feeling_usage to persist counts independently of current images.
+// Level 3: aggregate across all users; other levels: only their own counts.
 app.get('/tag-frequencies', (req, res) => {
     try {
         const user = getUserFromSession(req);
@@ -456,22 +505,17 @@ app.get('/tag-frequencies', (req, res) => {
 
         if (userLevel === 3) {
             rows = db.prepare(`
-                SELECT t.name AS name, COUNT(*) AS count
-                FROM image_tags it
-                JOIN tags t ON t.id = it.tag_id
-                JOIN images i ON i.id = it.image_id
-                GROUP BY t.id, t.name
-                ORDER BY count DESC, t.name ASC
+                SELECT name, SUM(count) AS count
+                FROM feeling_usage
+                GROUP BY name
+                ORDER BY count DESC, name ASC
             `).all();
         } else {
             rows = db.prepare(`
-                SELECT t.name AS name, COUNT(*) AS count
-                FROM image_tags it
-                JOIN tags t ON t.id = it.tag_id
-                JOIN images i ON i.id = it.image_id
-                WHERE i.ownership = ?
-                GROUP BY t.id, t.name
-                ORDER BY count DESC, t.name ASC
+                SELECT name, count
+                FROM feeling_usage
+                WHERE user_email = ?
+                ORDER BY count DESC, name ASC
             `).all(user.email);
         }
 
@@ -484,6 +528,55 @@ app.get('/tag-frequencies', (req, res) => {
     } catch (err) {
         console.error('Error fetching tag frequencies:', err.message);
         res.status(500).send('Error fetching tag frequencies');
+    }
+});
+
+// 3c. Increment feeling usage counts (persist subjective tags)
+app.post('/feelings/usage', (req, res) => {
+    try {
+        const user = getUserFromSession(req);
+        if (!user) {
+            return res.status(401).send('Authentication required');
+        }
+
+        const feelings = Array.isArray(req.body.feelings) ? req.body.feelings : [];
+        if (feelings.length === 0) {
+            return res.status(400).send('Feelings array required');
+        }
+
+        const normalized = feelings
+            .map(f => String(f || '').trim().toLowerCase())
+            .filter(f => f.length > 0);
+
+        if (normalized.length === 0) {
+            return res.status(400).send('No valid feelings provided');
+        }
+
+        const unique = [...new Set(normalized)];
+
+        const incrementStmt = db.prepare(`
+            UPDATE feeling_usage
+            SET count = count + 1, updated_at = datetime('now')
+            WHERE name = ? AND user_email = ?
+        `);
+        const insertStmt = db.prepare(`
+            INSERT OR IGNORE INTO feeling_usage (name, user_email, count)
+            VALUES (?, ?, 0)
+        `);
+
+        const txn = db.transaction((items) => {
+            for (const name of items) {
+                insertStmt.run(name, user.email);
+                incrementStmt.run(name, user.email);
+            }
+        });
+
+        txn(unique);
+
+        res.json({ updated: unique.length });
+    } catch (err) {
+        console.error('Error incrementing feeling usage:', err.message);
+        res.status(500).send('Error incrementing feeling usage');
     }
 });
 
