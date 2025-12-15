@@ -978,6 +978,22 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 .lightbox-freq-item:hover {
   background: rgba(255, 255, 255, 0.15);
 }
+.lightbox-freq-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.lightbox-toast {
+  position: fixed;
+  right: 24px;
+  top: 24px;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  z-index: 10000;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
 .lightbox-tag-add {
   display: flex;
   gap: 8px;

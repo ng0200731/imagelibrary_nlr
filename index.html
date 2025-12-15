@@ -957,6 +957,7 @@
     let currentPreviewImages = []; // Array of images for navigation
     let currentPreviewIndex = 0; // Current image index in preview
     let isSelectionPoolPreview = false; // Track if we're in Selection Pool preview mode
+    let pendingAddTags = new Set(); // Track tags added in lightbox before saving
 
     // --- Function Definitions ---
 
@@ -2421,15 +2422,18 @@
         modal.classList.add('is-hidden');
         const freqFloating = document.getElementById('lightbox-freq-floating');
         if (freqFloating) freqFloating.remove();
+        pendingAddTags.clear();
     }
 
     // --- Library Lightbox Functions ---
 
     function openLibraryLightbox(index) {
+        pendingAddTags.clear();
         currentImageIndex = index;
         imageSources = libraryImages.map(img => img.src);
         modalImg.src = imageSources[currentImageIndex];
         displayLightboxTags(index);
+        renderLightboxFreqFloating(libraryImages[index].id);
         modal.classList.remove('is-hidden');
         updateArrowVisibility();
     }
@@ -2439,6 +2443,9 @@
         currentImageIndex = index;
         modalImg.src = imageSources[currentImageIndex];
         displayLightboxTags(index);
+        if (libraryImages[index]) {
+            renderLightboxFreqFloating(libraryImages[index].id);
+        }
         updateArrowVisibility();
     }
 
@@ -2781,20 +2788,21 @@
 
         const currentImage = libraryImages[index];
         const imageTags = currentImage.tags || [];
-
         lightboxTags.innerHTML = '';
-
-        if (imageTags.length === 0) {
-            lightboxTags.innerHTML = '<span class="no-tags">No tags</span>';
-            return;
-        }
 
         // Left column: tag list + add input (frequency panel floats separately)
         const tagList = document.createElement('div');
         tagList.className = 'lightbox-tag-list';
 
-        // Create tag chips for lightbox
-        imageTags.forEach(tagText => {
+        // Render existing + pending chips
+        const allTagSet = new Set([...imageTags, ...pendingAddTags]);
+        if (allTagSet.size === 0) {
+            const empty = document.createElement('span');
+            empty.className = 'no-tags';
+            empty.textContent = 'No tags';
+            tagList.appendChild(empty);
+        } else {
+            allTagSet.forEach(tagText => {
             const chip = document.createElement('span');
             chip.className = 'lightbox-tag-chip';
             chip.textContent = tagText;
@@ -2817,8 +2825,9 @@
             });
             chip.appendChild(removeBtn);
 
-            tagList.appendChild(chip);
-        });
+                tagList.appendChild(chip);
+            });
+        }
 
         // Add input for adding new tags in lightbox
         const addWrap = document.createElement('div');
@@ -2831,8 +2840,8 @@
         const commitAdd = async () => {
             const value = (addInput.value || '').trim();
             if (!value) return;
-            await handleAddTagToImage(currentImage.id, value);
-            addInput.value = '';
+            const added = await handleAddTagToImage(currentImage.id, value);
+            if (added) addInput.value = '';
         };
 
         addInput.addEventListener('keydown', (e) => {
@@ -2845,6 +2854,14 @@
         addWrap.appendChild(addInput);
         lightboxTags.appendChild(tagList);
         lightboxTags.appendChild(addWrap);
+
+        // Save button for pending adds
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'button button--primary';
+        saveBtn.textContent = 'Save';
+        saveBtn.style.marginTop = '8px';
+        saveBtn.addEventListener('click', () => saveLightboxTagChanges(currentImage.id));
+        lightboxTags.appendChild(saveBtn);
 
         renderLightboxFreqFloating(currentImage.id);
     }
@@ -2871,6 +2888,7 @@
         try {
             await updateImageTags(imageId, newTags);
             image.tags = newTags;
+            pendingAddTags.delete(tagText);
             displayLightboxTags(currentPreviewIndex);
         } catch (err) {
             console.error('Failed to remove tag from image:', err);
@@ -2886,18 +2904,42 @@
         if (!image) return;
         const cleaned = tagText.trim();
         if (!cleaned) return;
-        // Prevent duplicates (case-insensitive)
-        const exists = (image.tags || []).some(t => t.toLowerCase() === cleaned.toLowerCase());
-        if (exists) return;
-        const newTags = [...(image.tags || []), cleaned];
+        // Prevent duplicates against existing tags + pending adds (case-insensitive)
+        const exists = [...(image.tags || []), ...pendingAddTags].some(t => t.toLowerCase() === cleaned.toLowerCase());
+        if (exists) {
+            showLightboxToast('Tag already added');
+            return false;
+        }
+        pendingAddTags.add(cleaned);
+        displayLightboxTags(currentPreviewIndex);
+        renderLightboxFreqFloating(imageId);
+        return true;
+    }
+
+    async function saveLightboxTagChanges(imageId) {
+        const image = libraryImages.find(img => img.id === imageId);
+        if (!image) return;
+        if (pendingAddTags.size === 0) {
+            showLightboxToast('Nothing to save');
+            return;
+        }
+        const newTags = [...new Set([...(image.tags || []), ...pendingAddTags])];
         try {
             await updateImageTags(imageId, newTags);
             image.tags = newTags;
+            // Increment feelings usage for subjective tags (no prefix)
+            const feelings = [...pendingAddTags].filter(tag => !tag.includes(':'));
+            if (feelings.length > 0) {
+                await persistFeelingsUsage(feelings);
+                await fetchSubjFrequencies();
+            }
+            pendingAddTags.clear();
             displayLightboxTags(currentPreviewIndex);
             renderLightboxFreqFloating(imageId);
+            showLightboxToast('Tags saved');
         } catch (err) {
-            console.error('Failed to add tag to image:', err);
-            alert('Failed to add tag. Please try again.');
+            console.error('Failed to save tags:', err);
+            alert('Failed to save tags. Please try again.');
         }
     }
 
@@ -2932,6 +2974,9 @@
             empty.textContent = 'No frequent tags yet';
             list.appendChild(empty);
         } else {
+            // Determine current tags for disable state
+            const image = libraryImages.find(img => img.id === imageId);
+            const existingTags = new Set([...(image?.tags || []), ...pendingAddTags]);
             freqItems.forEach(({ label, count }) => {
                 const row = document.createElement('div');
                 row.className = 'lightbox-freq-item';
@@ -2941,7 +2986,15 @@
                 countSpan.textContent = `×${count}`;
                 row.appendChild(nameSpan);
                 row.appendChild(countSpan);
+                const isUsed = Array.from(existingTags).some(t => t.toLowerCase() === label.toLowerCase());
+                if (isUsed) {
+                    row.classList.add('disabled');
+                }
                 row.addEventListener('click', () => {
+                    if (row.classList.contains('disabled')) {
+                        showLightboxToast('Tag already added');
+                        return;
+                    }
                     handleAddTagToImage(imageId, label);
                 });
                 list.appendChild(row);
@@ -2950,6 +3003,22 @@
 
         panel.appendChild(list);
         overlay.appendChild(panel);
+    }
+
+    let lightboxToastTimeout = null;
+    function showLightboxToast(message) {
+        if (!message) return;
+        const existing = document.getElementById('lightbox-toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.id = 'lightbox-toast';
+        toast.className = 'lightbox-toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        if (lightboxToastTimeout) clearTimeout(lightboxToastTimeout);
+        lightboxToastTimeout = setTimeout(() => {
+            toast.remove();
+        }, 1800);
     }
 
     // --- Selection and Project Management Functions ---
@@ -3748,6 +3817,8 @@
         if (freqFloating) {
             freqFloating.remove();
         }
+        // Clear pending adds on close
+        pendingAddTags.clear();
     }
 
     // Show real-size overlay (strict 1:1 based on mm dimensions)
