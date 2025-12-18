@@ -979,26 +979,42 @@
         console.log('Tag creation order:', tagCreationOrder);
 
 
-        // Create groups by tag in reverse chronological order (latest tag first)
+        // Create groups by tag based on current search chips:
+        // when chips are "#3 star", "#2 white", "#1 pink",
+        // images should be grouped: all "star", then "white", then "pink".
         const result = [];
 
-        // Get all tags that have been input (from tagCreationOrder) and sort by input timestamp
-        const allInputTags = Object.keys(tagCreationOrder).sort((a, b) => {
-            const timestampA = tagCreationOrder[a] || 0;
-            const timestampB = tagCreationOrder[b] || 0;
-            return timestampB - timestampA; // Latest tag first (most recently input)
-        });
+        // Prefer current chip DOM order (left → right) for grouping, so it always matches
+        // what the user sees: "#3 star", "#2 white", "#1 pink" → [star, white, pink].
+        let allInputTags = [];
+        const chipContainer = document.getElementById('library-search-chips');
+        if (chipContainer) {
+            const chipNodes = Array.from(chipContainer.querySelectorAll('.search-chip'));
+            allInputTags = chipNodes
+                .map(chip => (chip.dataset.tag || '').toLowerCase())
+                .filter(tag => tag);
+        }
+
+        // Fallback if no chips are present: use historical input order from tagCreationOrder (oldest first)
+        if (allInputTags.length === 0) {
+            allInputTags = Object.keys(tagCreationOrder).sort((a, b) => {
+                const timestampA = tagCreationOrder[a] || 0;
+                const timestampB = tagCreationOrder[b] || 0;
+                return timestampA - timestampB;
+            });
+        }
 
         console.log('All input tags in reverse chronological order (latest input first):', allInputTags.map(tag => `${tag}: ${tagCreationOrder[tag]}`));
 
         // Track which images we've already added to prevent duplicates
         const addedImageIds = new Set();
 
-        // For each tag in reverse chronological order (latest first), add ALL images that have this tag
+        // For each tag (in the desired order), add ALL images that have this tag
         allInputTags.forEach(tag => {
+            const normalizedTag = tag.toLowerCase();
             const imagesWithThisTag = images.filter(image => {
                 const imageTags = image.tags || [];
-                return imageTags.includes(tag);
+                return imageTags.some(t => t.toLowerCase() === normalizedTag);
             });
 
             // Sort images within this tag group by upload time (earliest first)
@@ -1374,10 +1390,40 @@
                 }
             }
 
-            // Show first 3 subjective tags
-            tagOverlay.textContent = subjectiveTags.slice(0, 3).join(', ');
-            if (subjectiveTags.length > 3) {
-                tagOverlay.textContent += ` +${subjectiveTags.length - 3}`;
+            // If this image belongs to more than one active search tag,
+            // we treat it as a "duplicate across tags"
+            const isDuplicateAcrossTags = matchingSubjectiveTags.length > 1;
+            const maxTagsToShow = 3;
+            const tagsToShow = subjectiveTags.slice(0, maxTagsToShow);
+
+            // Clear any default text and build spans so we can style duplicates
+            tagOverlay.textContent = '';
+
+            tagsToShow.forEach((tag, idx) => {
+                if (idx > 0) {
+                    const comma = document.createElement('span');
+                    comma.textContent = ', ';
+                    tagOverlay.appendChild(comma);
+                }
+
+                const span = document.createElement('span');
+                span.textContent = tag;
+
+                // If image is under more than one active tag and this tag is one of them,
+                // show this tag text in red to mark the duplicate image.
+                if (isDuplicateAcrossTags &&
+                    matchingSubjectiveTags.some(mt => mt.toLowerCase() === tag.toLowerCase())) {
+                    span.style.color = 'red';
+                    span.style.fontWeight = '600';
+                }
+
+                tagOverlay.appendChild(span);
+            });
+
+            if (subjectiveTags.length > maxTagsToShow) {
+                const moreSpan = document.createElement('span');
+                moreSpan.textContent = ` +${subjectiveTags.length - maxTagsToShow}`;
+                tagOverlay.appendChild(moreSpan);
             }
 
             card.appendChild(tagOverlay);
@@ -1847,13 +1893,12 @@
 
                 console.log('Library view with no active tags, sorted latest first, preserving tagSelectedImages:', tagSelectedImages.length);
             } else {
-                // Library view with search tags - keep showing ALL images in the library.
-                // Matching images are highlighted by color; non-matching images remain visible.
-                console.log('=== LIBRARY VIEW WITH SEARCH TAGS (SHOW ALL IMAGES) ===');
+                // Library view with search tags - show ALL images in the library,
+                // but put matching images first, grouped by tag order (#3, then #2, then #1).
+                console.log('=== LIBRARY VIEW WITH SEARCH TAGS (SHOW ALL IMAGES, GROUP MATCHES FIRST) ===');
 
-                // We still fetch tag-matching images to update tag selection metadata,
-                // but we do NOT filter the main grid to only those matches.
-                console.log('Fetching tag-matching images for tags (for selection metadata only):', currentSearchTags);
+                // We still fetch tag-matching images to update tag selection metadata.
+                console.log('Fetching tag-matching images for tags (for selection metadata and ordering):', currentSearchTags);
                 const sessionToken2 = localStorage.getItem('sessionToken');
                 const headers2 = {};
                 if (sessionToken2) {
@@ -1897,13 +1942,26 @@
                 console.log('selectedImages after tag processing:', selectedImages);
                 console.log('tagSelectedImages after tag processing:', tagSelectedImages);
 
-                // Show the full library; highlighting is handled per-card.
-                imagesToDisplay = allImages;
+                // 1) Matching images: those that have at least one of the current search tags
+                const currentTagsLower = currentSearchTags.map(t => t.toLowerCase());
+                const matchingImages = allImages.filter(image => {
+                    const imageTags = (image.tags || []).map(t => t.toLowerCase());
+                    return imageTags.some(tag => currentTagsLower.includes(tag));
+                });
 
-                // Sort by image ID in descending order (latest uploads first)
-                imagesToDisplay.sort((a, b) => b.id - a.id);
+                // Group matching images by tag order: #3 (first typed) first, then #2, then #1
+                const groupedMatchingImages = groupImagesByTagsAndSort(matchingImages);
 
-                console.log('Library view with search tags - showing ALL images with highlights. Count:', imagesToDisplay.length);
+                // 2) Remaining images: those that don't match any active search tag
+                const groupedIds = new Set(groupedMatchingImages.map(img => img.id));
+                const remainingImages = allImages
+                    .filter(img => !groupedIds.has(img.id))
+                    .sort((a, b) => b.id - a.id); // latest uploads first for the rest
+
+                // 3) Final sequence: all matching (grouped), then all remaining
+                imagesToDisplay = [...groupedMatchingImages, ...remainingImages];
+
+                console.log('Library view with search tags - matching images first, then others. Total:', imagesToDisplay.length);
             }
 
             // Update header based on view type - check if we're showing selection pool
