@@ -3826,24 +3826,19 @@
         // Store project ID for reference
         projectDetailModal.dataset.projectId = project.id;
 
-        // Update header information
+        // Update header information - only show project name
         projectDetailName.textContent = `📁 ${project.name}`;
-        projectDetailDate.textContent = `📅 Created: ${new Date(project.created_at).toLocaleDateString()}`;
-        if (project.ownership && projectDetailOwner) {
-            const emailPrefix = getEmailPrefix(project.ownership);
-            projectDetailOwner.textContent = `👤 Created by: ${emailPrefix}`;
-            projectDetailOwner.style.display = 'inline';
-        } else if (projectDetailOwner) {
+        
+        // Hide Created date, Total Images breakdown, and Created by per request
+        if (projectDetailDate) {
+            projectDetailDate.style.display = 'none';
+        }
+        if (projectDetailCount) {
+            projectDetailCount.style.display = 'none';
+        }
+        if (projectDetailOwner) {
             projectDetailOwner.style.display = 'none';
         }
-
-        // Generate detailed count with breakdown using the formatting function
-        // Pass the project as fallback for existing projects without breakdown data
-        console.log('Project detail - project:', project);
-        console.log('Project detail - selection_breakdown:', project.selection_breakdown);
-        const countText = formatSelectionBreakdown(project.selection_breakdown, project);
-        console.log('Project detail - countText:', countText);
-        projectDetailCount.textContent = countText;
 
         // Project-level tag list removed from header per request
         if (projectDetailTags) {
@@ -4023,7 +4018,7 @@
 
                 const img = document.createElement('img');
                 const imageSrc = `${API_URL}/${image.filepath.replace(/\\/g, '/')}`;
-                img.alt = `Image ${image.id}`;
+                img.alt = '';
 
                 // Test image loading before displaying
                 const testImg = new Image();

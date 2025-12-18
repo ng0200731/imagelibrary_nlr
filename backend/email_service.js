@@ -276,14 +276,7 @@ function generateHtmlContent(projectData, senderMessage) {
         `;
     }
 
-    html += `
-            <div class="project-info">
-                <h2>📊 Project Details</h2>
-                <p><strong>Project Name:</strong> ${projectData.name}</p>
-                <p><strong>${projectData.breakdown_text || `Total Images: ${projectData.images.length} images`}</strong></p>
-                <p><strong>Created:</strong> ${projectData.created_at || 'Unknown'}</p>
-            </div>
-    `;
+    // Project-level summary block removed per request (no Project Name / Total Images / Created lines here)
 
     // Add each image with new layout
     projectData.images.forEach((image, i) => {
