@@ -1426,6 +1426,30 @@
                 tagOverlay.appendChild(moreSpan);
             }
 
+            // Extra visual highlight for duplicate images across tags
+            if (isDuplicateAcrossTags) {
+                // Strong red outline + glow
+                card.style.outline = '3px solid red';
+                card.style.outlineOffset = '3px';
+                card.style.boxShadow = '0 0 8px rgba(255,0,0,0.7)';
+
+                // Small "DUP" badge in the top-left corner
+                card.style.position = card.style.position || 'relative';
+                const dupBadge = document.createElement('div');
+                dupBadge.textContent = 'DUP';
+                dupBadge.style.position = 'absolute';
+                dupBadge.style.top = '4px';
+                dupBadge.style.left = '4px';
+                dupBadge.style.padding = '2px 4px';
+                dupBadge.style.fontSize = '10px';
+                dupBadge.style.fontWeight = '600';
+                dupBadge.style.backgroundColor = 'rgba(255,0,0,0.9)';
+                dupBadge.style.color = '#ffffff';
+                dupBadge.style.borderRadius = '3px';
+                dupBadge.style.zIndex = '2';
+                tagOverlay.appendChild(dupBadge);
+            }
+
             card.appendChild(tagOverlay);
         }
 
