@@ -1425,7 +1425,21 @@
             // Clear any default text and build spans so we can style duplicates
             tagOverlay.textContent = '';
 
-            tagsToShow.forEach((tag, idx) => {
+            // Reorder so duplicate-overlap tags (red ones) appear FIRST in this line
+            const dupTags = [];
+            const nonDupTags = [];
+            tagsToShow.forEach(tag => {
+                const isDupTag = isDuplicateAcrossTags &&
+                    matchingSubjectiveTags.some(mt => mt.toLowerCase() === tag.toLowerCase());
+                if (isDupTag) {
+                    dupTags.push(tag);
+                } else {
+                    nonDupTags.push(tag);
+                }
+            });
+            const orderedTags = [...dupTags, ...nonDupTags];
+
+            orderedTags.forEach((tag, idx) => {
                 if (idx > 0) {
                     const comma = document.createElement('span');
                     comma.textContent = ', ';
