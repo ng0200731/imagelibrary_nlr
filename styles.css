@@ -1094,33 +1094,29 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 .prev, .next {
   cursor: pointer;
   position: absolute;
-  top: 50%;
+  bottom: 40px;
   width: auto;
   padding: 16px 20px;
-  margin-top: -22px;
   color: #fff;
   font-weight: bold;
   font-size: 24px;
-  transition: all 0.3s ease;
   user-select: none;
   background-color: rgba(0, 0, 0, 0.7);
   border: 2px solid #fff;
+  border-radius: 8px;
 }
 
 .prev {
-  left: 20px;
-  border-radius: 0 8px 8px 0;
+  left: 5%;
 }
 
 .next {
-  right: 20px;
-  border-radius: 8px 0 0 8px;
+  right: 5%;
 }
 
 .prev:hover, .next:hover {
   background-color: #fff;
   color: #000;
-  transform: scale(1.1);
 }
 
 
