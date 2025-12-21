@@ -2924,6 +2924,10 @@
     }
 
     function renumberSearchChips() {
+        // Remove all existing separators first
+        const existingSeparators = librarySearchChips.querySelectorAll('.chip-separator');
+        existingSeparators.forEach(sep => sep.remove());
+        
         const chips = Array.from(librarySearchChips.querySelectorAll('.search-chip'));
         chips.forEach((chip, index) => {
             // Rightmost (newest) chip is #1, then #2, etc.
@@ -2948,6 +2952,21 @@
                 showTagRemovalConfirmation(tag);
             });
             chip.appendChild(deleteBtn);
+            
+            // Add separator after each chip (except the last one) if there are 2+ chips
+            if (index < chips.length - 1 && chips.length > 1) {
+                const separator = document.createElement('span');
+                separator.className = 'chip-separator';
+                separator.textContent = tagSearchMode; // 'OR' or 'AND'
+                separator.style.margin = '0 8px';
+                separator.style.color = '#666';
+                separator.style.fontSize = '14px';
+                separator.style.fontWeight = '500';
+                separator.style.userSelect = 'none';
+                
+                // Insert separator after the chip
+                chip.parentNode.insertBefore(separator, chip.nextSibling);
+            }
         });
     }
 
@@ -6794,6 +6813,9 @@
         console.log('Tag search mode changed to:', tagSearchMode);
         console.log('Current view - isPoolView:', isPoolView, 'searchTags.length:', searchTags.length);
         updateTagModeButtonText();
+        
+        // Update separators between chips
+        renumberSearchChips();
         
         // Refresh display immediately if there are search tags OR if in pool view
         if (searchTags.length > 0 || isPoolView) {
