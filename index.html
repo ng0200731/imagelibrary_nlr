@@ -1619,6 +1619,12 @@
         const allSelectedImageIds = [...new Set([...selectedImages, ...tagSelectedImages])];
         const shouldShowSelectedAtFront = !isPoolView && allSelectedImageIds.length > 0 && currentPage === 0;
         
+        // Clear any existing messages
+        const existingMessage = libraryGrid.querySelector('.no-images-message');
+        if (existingMessage) {
+            existingMessage.remove();
+        }
+        
         if (shouldShowSelectedAtFront) {
             // First, display selected images at the front (in color, clickable)
             // Get selected images in their original order from loadedImages
@@ -1639,6 +1645,17 @@
             const card = createImageCard(image, index, imageSrc, currentSearchTags, false);
             libraryGrid.appendChild(card);
         });
+
+        // Show message if no images to display (and not in pool view, which has its own message)
+        if (!isPoolView && loadedImages.length === 0 && currentPage === 0) {
+            const noImagesMessage = document.createElement('div');
+            noImagesMessage.className = 'no-images-message';
+            noImagesMessage.style.textAlign = 'center';
+            noImagesMessage.style.padding = '40px';
+            noImagesMessage.style.color = '#666';
+            noImagesMessage.innerHTML = '<p>No images to display.</p>';
+            libraryGrid.appendChild(noImagesMessage);
+        }
 
         // Calculate displayed count for button
         let displayedCount = startIndex + pageImages.length;
@@ -3589,11 +3606,13 @@
         // Calculate total selections: manual selections + tag-based selections (considering current mode)
         const totalSelections = await calculateSelectionCount();
         
-        // Update selection count display
-        if (totalSelections === 0) {
-            selectionCount.textContent = 'No image selected';
-        } else {
-            selectionCount.textContent = `${totalSelections} selected`;
+        // Update selection count display (only if selectionCount element exists)
+        if (selectionCount) {
+            if (totalSelections === 0) {
+                selectionCount.textContent = 'No image selected';
+            } else {
+                selectionCount.textContent = `${totalSelections} selected`;
+            }
         }
         
         addToProjectBtn.disabled = totalSelections === 0;
