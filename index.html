@@ -476,9 +476,10 @@
                 <span id="project-detail-count">📊 Total Images: 12</span>
                 <span id="project-detail-owner" style="display: none;">👤 Created by: </span>
               </div>
-              <!-- Project tags row removed per request -->
-              <div class="project-tags-row" style="display:none;">
-                <span id="project-detail-tags"></span>
+              <!-- Project tags display -->
+              <div class="project-tags-row">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Tags:</label>
+                <span id="project-detail-tags-text" style="display: block; padding: 8px; color: #333; font-size: 14px;"></span>
               </div>
             </div>
           </div>
@@ -877,7 +878,7 @@
     const projectDetailDate = document.getElementById('project-detail-date');
     const projectDetailCount = document.getElementById('project-detail-count');
     const projectDetailOwner = document.getElementById('project-detail-owner');
-    const projectDetailTags = document.getElementById('project-detail-tags');
+    const projectDetailTagsText = document.getElementById('project-detail-tags-text');
     const projectDetailGrid = document.getElementById('project-detail-grid');
 
     // Share project modal elements
@@ -3871,6 +3872,7 @@
     function showProjectDetailModal(project) {
         console.log('=== SHOWPROJECTDETAILMODAL START ===');
         console.log('Opening project detail modal for:', project);
+        console.log('Project selection_breakdown:', project.selection_breakdown);
 
         // Store project ID for reference
         projectDetailModal.dataset.projectId = project.id;
@@ -3889,9 +3891,36 @@
             projectDetailOwner.style.display = 'none';
         }
 
-        // Project-level tag list removed from header per request
-        if (projectDetailTags) {
-            projectDetailTags.textContent = '';
+        // Populate tags text with search tags (1st level tags) only
+        console.log('projectDetailTagsText element:', projectDetailTagsText);
+        if (projectDetailTagsText) {
+            // Get search tags from selection_breakdown.searchTags (these are the user search tags)
+            let searchTagsList = [];
+            console.log('Project selection_breakdown:', JSON.stringify(project.selection_breakdown, null, 2));
+            
+            if (project.selection_breakdown) {
+                if (project.selection_breakdown.searchTags && Array.isArray(project.selection_breakdown.searchTags) && project.selection_breakdown.searchTags.length > 0) {
+                    // Use the stored search tags array (all tags the user searched for)
+                    searchTagsList = project.selection_breakdown.searchTags;
+                    console.log('✓ Using stored searchTags:', searchTagsList);
+                } else if (project.selection_breakdown.tagCounts && typeof project.selection_breakdown.tagCounts === 'object') {
+                    // Fallback: use keys from tagCounts for older projects without searchTags stored
+                    const tagCountsKeys = Object.keys(project.selection_breakdown.tagCounts);
+                    if (tagCountsKeys.length > 0) {
+                        searchTagsList = tagCountsKeys;
+                        console.log('✓ Using tagCounts keys as fallback:', searchTagsList);
+                    }
+                }
+            } else {
+                console.log('⚠ No selection_breakdown found in project');
+            }
+            
+            // Set the text content with the search tags (e.g., "CLARA")
+            const tagsValue = searchTagsList.join(', ');
+            projectDetailTagsText.textContent = tagsValue || '';
+            console.log('✓ Project detail tags text set to:', tagsValue);
+        } else {
+            console.error('✗ projectDetailTagsText element not found!');
         }
 
         // Load project images
@@ -3967,7 +3996,8 @@
         return {
             tagCounts,
             manuallySelectedCount,
-            totalImages: selectedImages.length
+            totalImages: selectedImages.length,
+            searchTags: currentSearchTags // Store the search tags used to create the project
         };
     }
 
@@ -4069,6 +4099,23 @@
                 const imageSrc = `${API_URL}/${image.filepath.replace(/\\/g, '/')}`;
                 img.alt = '';
 
+                // Prepare tag overlay to show all tags for this image
+                const allImageTags = image.tags || [];
+                // Filter out objective metadata tags (width, length, book, page, row, column, type, material, remark, brand, color)
+                const objectivePrefixes = ['width:', 'length:', 'book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'remark:', 'brand:', 'color:'];
+                const subjectiveTags = allImageTags.filter(tag => {
+                    const tagLower = tag.toLowerCase();
+                    return !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
+                });
+
+                let tagOverlay = null;
+                if (subjectiveTags.length > 0) {
+                    tagOverlay = document.createElement('div');
+                    tagOverlay.className = 'tag-overlay';
+                    // Show all tags, comma-separated
+                    tagOverlay.textContent = subjectiveTags.join(', ');
+                }
+
                 // Test image loading before displaying
                 const testImg = new Image();
                 testImg.onload = () => {
@@ -4081,6 +4128,10 @@
                     });
 
                     card.appendChild(img);
+                    // Append tag overlay if it exists
+                    if (tagOverlay) {
+                        card.appendChild(tagOverlay);
+                    }
                 };
                 testImg.onerror = () => {
                     // Skip broken images in project view
@@ -4088,8 +4139,6 @@
                     // Don't append the img to the card
                 };
                 testImg.src = imageSrc;
-
-                // Per-image tag overlay removed from project detail view per request
 
                 // Create icons container
                 const iconsContainer = document.createElement('div');
@@ -4604,6 +4653,10 @@
             if (response.ok) {
                 projects = await response.json();
                 console.log('Loaded projects from API:', projects.length);
+                // Log first project structure to debug
+                if (projects.length > 0) {
+                    console.log('Sample project structure:', JSON.stringify(projects[0], null, 2));
+                }
             } else {
                 console.error('Failed to load projects:', response.statusText);
                 projects = [];
@@ -4624,6 +4677,7 @@
             // Add breakdown metadata if provided
             if (breakdown) {
                 projectData.selection_breakdown = breakdown;
+                console.log('Saving project with breakdown:', JSON.stringify(breakdown, null, 2));
             }
 
             const sessionToken = localStorage.getItem('sessionToken');
@@ -4641,8 +4695,14 @@
 
             if (response.ok) {
                 const newProject = await response.json();
+                // Add selection_breakdown to the project object if it was provided
+                // (API might not return it, so we preserve it from what we sent)
+                if (breakdown) {
+                    newProject.selection_breakdown = breakdown;
+                }
                 projects.push(newProject);
                 console.log('Project saved to API:', newProject);
+                console.log('Project with breakdown:', JSON.stringify(newProject, null, 2));
                 return newProject;
             } else {
                 console.error('Failed to save project:', response.statusText);
@@ -4899,7 +4959,7 @@
                 creatorEmail.className = 'project-creator-email';
                 if (project.ownership) {
                     const emailPrefix = getEmailPrefix(project.ownership);
-                    creatorEmail.textContent = `by ${emailPrefix}`;
+                    creatorEmail.textContent = emailPrefix; // Match image library format (no "by" prefix)
                 }
 
                 projectMeta.appendChild(imageCount);
