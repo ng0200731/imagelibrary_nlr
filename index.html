@@ -1971,7 +1971,7 @@
                 // Now combine selections for pool view display, respecting AND/OR mode
                 let allSelectedImageIds;
                 if (searchMode === 'AND') {
-                    // AND mode: Only show images that match ALL tags (from tagMatchingImages)
+                    // AND mode: Only show images that match ALL tags (use newTagSelectedImages from current API call)
                     // Include manually selected images only if they also match ALL tags
                     const currentTagsLower = currentSearchTags.map(t => t.toLowerCase());
                     const manuallySelectedMatchingAll = selectedImages.filter(imgId => {
@@ -1980,7 +1980,9 @@
                         const imageTags = (img.tags || []).map(t => t.toLowerCase());
                         return currentTagsLower.every(tag => imageTags.includes(tag));
                     });
-                    allSelectedImageIds = [...new Set([...manuallySelectedMatchingAll, ...tagSelectedImages])];
+                    // Use newTagSelectedImages (current API result) instead of tagSelectedImages (which may contain old OR-mode selections)
+                    allSelectedImageIds = [...new Set([...manuallySelectedMatchingAll, ...newTagSelectedImages])];
+                    console.log('AND mode - newTagSelectedImages:', newTagSelectedImages, 'manuallySelectedMatchingAll:', manuallySelectedMatchingAll);
                 } else {
                     // OR mode: Show all selected images (manual + tag-selected)
                     allSelectedImageIds = [...new Set([...selectedImages, ...tagSelectedImages])];
@@ -2219,6 +2221,9 @@
             }
 
             console.log('displayLibraryImages completed, selectedImages at end:', selectedImages);
+            
+            // Ensure button text always reflects current mode (defensive check)
+            updateTagModeButtonText();
         } catch (error) {
             console.error('Error fetching images:', error);
             console.error('Error details:', {
@@ -3692,8 +3697,18 @@
         // Update header to show Selection Pool
         updateLibraryTitle(true);
 
+        // Ensure button text reflects current mode (preserve AND/OR state)
+        console.log('Before updateTagModeButtonText - tagSearchMode:', tagSearchMode);
+        updateTagModeButtonText();
+        console.log('After updateTagModeButtonText - button text:', tagModeToggleBtn.textContent, 'tagSearchMode:', tagSearchMode);
+
         // Use the main display function which now handles pool view
         await displayLibraryImages();
+        
+        // Ensure button text is still correct after displayLibraryImages (in case something reset it)
+        console.log('After displayLibraryImages - button text:', tagModeToggleBtn.textContent, 'tagSearchMode:', tagSearchMode);
+        updateTagModeButtonText();
+        console.log('After final updateTagModeButtonText - button text:', tagModeToggleBtn.textContent);
         console.log('=== viewSelectionPool END ===');
     }
 
@@ -3771,6 +3786,11 @@
             isPoolView = false;
             forceLibraryView = true; // Prevent auto-switching back to pool view
             console.log('Set isPoolView to false and forceLibraryView to true');
+            console.log('Preserving tagSearchMode:', tagSearchMode, 'when going back to Library');
+            
+            // Ensure button text reflects current mode (preserve AND/OR state)
+            updateTagModeButtonText();
+            
             console.log('About to update title to Library view');
 
             // Update header back to normal library view
@@ -6544,10 +6564,11 @@
         // Toggle between AND and OR
         tagSearchMode = tagSearchMode === 'OR' ? 'AND' : 'OR';
         console.log('Tag search mode changed to:', tagSearchMode);
+        console.log('Current view - isPoolView:', isPoolView, 'searchTags.length:', searchTags.length);
         updateTagModeButtonText();
         
-        // Refresh display immediately if there are search tags
-        if (searchTags.length > 0) {
+        // Refresh display immediately if there are search tags OR if in pool view
+        if (searchTags.length > 0 || isPoolView) {
             console.log('Refreshing display with mode:', tagSearchMode, 'for tags:', searchTags.map(t => t.text));
             displayLibraryImages();
         }
@@ -6555,7 +6576,12 @@
 
     // Function to update tag mode button text
     function updateTagModeButtonText() {
-        tagModeToggleBtn.textContent = tagSearchMode;
+        if (tagModeToggleBtn) {
+            tagModeToggleBtn.textContent = tagSearchMode;
+            console.log('updateTagModeButtonText called - setting button to:', tagSearchMode);
+        } else {
+            console.error('tagModeToggleBtn is null!');
+        }
     }
 
     // Initialize button text
