@@ -5031,7 +5031,7 @@
             deleteBtn.title = 'Delete project';
             deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation(); // Prevent triggering project detail modal
-                deleteProject(project.id);
+                showDeleteProjectModal(project.id);
             });
 
             actionSection.appendChild(shareBtn);
@@ -7070,6 +7070,19 @@
 
     // Close overlay with Escape key and add arrow key scrolling/navigation
     document.addEventListener('keydown', (e) => {
+        // Handle Escape key for modals (check outside image preview context)
+        if (e.key === 'Escape') {
+            if (!deleteProjectConfirmModal.classList.contains('is-hidden')) {
+                hideDeleteProjectModal();
+                return;
+            }
+            if (!tagDeleteConfirmModal.classList.contains('is-hidden')) {
+                pendingTagDelete = null;
+                tagDeleteConfirmModal.classList.add('is-hidden');
+                return;
+            }
+        }
+        
         if (imagePreviewOverlay.classList.contains('show')) {
             if (e.key === 'Escape') {
                 hideImagePreviewOverlay();
@@ -7091,9 +7104,6 @@
             } else if (!isSelectionPoolPreview && e.key === 'ArrowRight') {
                 e.preventDefault();
                 imagePreviewOverlay.scrollLeft += 50;
-            } else if (!tagDeleteConfirmModal.classList.contains('is-hidden') && e.key === 'Escape') {
-                pendingTagDelete = null;
-                tagDeleteConfirmModal.classList.add('is-hidden');
             }
         }
     });
@@ -7111,6 +7121,16 @@
     shareProjectClose.addEventListener('click', hideShareProjectModal);
     cancelShareBtn.addEventListener('click', hideShareProjectModal);
     sendShareBtn.addEventListener('click', shareProject);
+    
+    // Delete project confirmation modal event listeners
+    deleteProjectConfirmClose.addEventListener('click', hideDeleteProjectModal);
+    deleteProjectCancelBtn.addEventListener('click', hideDeleteProjectModal);
+    deleteProjectConfirmBtn.addEventListener('click', () => {
+        const projectId = deleteProjectConfirmModal.dataset.projectId;
+        if (projectId) {
+            deleteProject(parseInt(projectId));
+        }
+    });
 
     // Update tag modal event listeners
     updateTagClose.addEventListener('click', hideUpdateTagModal);
