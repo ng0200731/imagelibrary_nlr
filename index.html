@@ -2962,16 +2962,18 @@
                 separator.style.color = '#ffffff'; // White text
                 separator.style.backgroundColor = '#ff0000'; // Red circle background
                 separator.style.borderRadius = '50%'; // Make it circular
-                separator.style.width = '24px';
-                separator.style.height = '24px';
+                separator.style.width = '28px'; // Increased size for better spacing
+                separator.style.height = '28px'; // Increased size for better spacing
                 separator.style.display = 'inline-flex';
                 separator.style.alignItems = 'center'; // Vertical center alignment
                 separator.style.justifyContent = 'center'; // Horizontal center alignment
-                separator.style.fontSize = '12px';
+                separator.style.fontSize = '11px'; // Slightly smaller font for better fit
                 separator.style.fontWeight = '600';
                 separator.style.userSelect = 'none';
                 separator.style.lineHeight = '1';
                 separator.style.textAlign = 'center'; // Ensure text is centered
+                separator.style.padding = '0'; // No padding needed with flexbox centering
+                separator.style.boxSizing = 'border-box'; // Ensure padding is included in size
                 
                 // Insert separator after the chip
                 chip.parentNode.insertBefore(separator, chip.nextSibling);
