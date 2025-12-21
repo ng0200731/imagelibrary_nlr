@@ -653,6 +653,24 @@
         </div>
       </div>
 
+      <!-- Delete Project Confirmation Modal -->
+      <div id="delete-project-confirm-modal" class="modal-overlay is-hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Delete Project</h2>
+            <button id="delete-project-confirm-close" class="modal-close-btn">✕</button>
+          </div>
+          <div class="modal-body">
+            <p>Are you sure you want to delete the project "<span id="delete-project-name"></span>"?</p>
+            <p class="warning-text">This action cannot be undone. The project and all its associated data will be permanently removed.</p>
+          </div>
+          <div class="modal-footer">
+            <button id="delete-project-cancel-btn" class="button">Cancel</button>
+            <button id="delete-project-confirm-btn" class="button button--danger">Delete Project</button>
+          </div>
+        </div>
+      </div>
+
   <script>
     // --- Constants & State ---
     // Application Version - Increment for each update
@@ -930,6 +948,13 @@
 
     // Clear all confirmation modal elements
     const clearAllConfirmModal = document.getElementById('clear-all-confirm-modal');
+    
+    // Delete project confirmation modal elements
+    const deleteProjectConfirmModal = document.getElementById('delete-project-confirm-modal');
+    const deleteProjectConfirmClose = document.getElementById('delete-project-confirm-close');
+    const deleteProjectName = document.getElementById('delete-project-name');
+    const deleteProjectCancelBtn = document.getElementById('delete-project-cancel-btn');
+    const deleteProjectConfirmBtn = document.getElementById('delete-project-confirm-btn');
     const clearAllConfirmClose = document.getElementById('clear-all-confirm-close');
     const clearAllSelectionCount = document.getElementById('clear-all-selection-count');
     const clearAllTagCount = document.getElementById('clear-all-tag-count');
@@ -4716,8 +4741,15 @@
 
     async function deleteProjectFromAPI(projectId) {
         try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {};
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+            
             const response = await fetch(`${API_URL}/projects/${projectId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: headers
             });
 
             if (response.ok) {
@@ -4725,8 +4757,9 @@
                 console.log('Project deleted from API:', projectId);
                 return true;
             } else {
-                console.error('Failed to delete project:', response.statusText);
-                throw new Error('Failed to delete project');
+                const errorText = await response.text();
+                console.error('Failed to delete project:', response.status, response.statusText, errorText);
+                throw new Error(`Failed to delete project: ${response.statusText}`);
             }
         } catch (error) {
             console.error('Error deleting project:', error);
@@ -5055,15 +5088,27 @@
         }
     }
 
-    async function deleteProject(projectId) {
+    function showDeleteProjectModal(projectId) {
         const project = projects.find(p => p.id === projectId);
-        if (project && confirm(`Are you sure you want to delete the project "${project.name}"?`)) {
-            try {
-                await deleteProjectFromAPI(projectId);
-                displayProjects();
-            } catch (error) {
-                alert('Failed to delete project. Please try again.');
-            }
+        if (!project) return;
+        
+        deleteProjectConfirmModal.dataset.projectId = projectId;
+        deleteProjectName.textContent = project.name;
+        deleteProjectConfirmModal.classList.remove('is-hidden');
+    }
+
+    function hideDeleteProjectModal() {
+        deleteProjectConfirmModal.classList.add('is-hidden');
+        delete deleteProjectConfirmModal.dataset.projectId;
+    }
+
+    async function deleteProject(projectId) {
+        try {
+            await deleteProjectFromAPI(projectId);
+            displayProjects();
+            hideDeleteProjectModal();
+        } catch (error) {
+            alert('Failed to delete project. Please try again.');
         }
     }
 
@@ -6124,14 +6169,49 @@
             const project = projects.find(p => p.id == projectId);
             const breakdownText = formatSelectionBreakdown(project?.selection_breakdown, project);
 
+            // Collect all subjective tags (feeling tags) from project images
+            const allSubjectiveTags = new Set();
+            if (project && project.image_ids) {
+                try {
+                    const sessionToken = localStorage.getItem('sessionToken');
+                    const headers = {};
+                    if (sessionToken) {
+                        headers['Authorization'] = `Bearer ${sessionToken}`;
+                    }
+                    const response = await fetch(`${API_URL}/images`, { headers });
+                    if (response.ok) {
+                        const allImages = await response.json();
+                        const projectImages = allImages.filter(img => project.image_ids.includes(img.id));
+                        
+                        projectImages.forEach(image => {
+                            if (image.tags && Array.isArray(image.tags)) {
+                                image.tags.forEach(tag => {
+                                    // Only include subjective tags (exclude objective metadata)
+                                    if (!isObjectiveTag(tag)) {
+                                        allSubjectiveTags.add(tag);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error fetching images for tag filtering:', error);
+                }
+            }
+
+            const subjectiveTagsList = Array.from(allSubjectiveTags).sort();
+
             console.log('=== EMAIL SHARING ===');
             console.log('Project for email:', project);
             console.log('Breakdown text being sent:', breakdownText);
+            console.log('Subjective tags only:', subjectiveTagsList);
 
             const emailData = {
                 recipient_email: email,
                 message: message,
-                breakdown_text: breakdownText  // Send formatted breakdown to backend
+                breakdown_text: breakdownText,  // Send formatted breakdown to backend
+                include_only_feelings: true,  // Only show "Add feelings:" section, hide objective facts and tags
+                subjective_tags: subjectiveTagsList  // Send only subjective/feeling tags (e.g., "spider", "ghost spider", "clara")
             };
 
             console.log('Email data being sent to backend:', emailData);
