@@ -1984,7 +1984,9 @@
                     }
                 });
 
-                tagSelectedImages = [...new Set([...tagSelectedImages, ...newTagSelectedImages])];
+                // When mode changes, replace tagSelectedImages with new results (don't merge)
+                // This ensures AND mode shows only images matching ALL tags, OR mode shows images matching ANY tag
+                tagSelectedImages = newTagSelectedImages;
 
                 // DON'T add tag images to selectedImages - keep them separate
                 // selectedImages = manual selections only
@@ -1992,7 +1994,7 @@
                 // Combine them only for display purposes
 
                 console.log('selectedImages after tag processing:', selectedImages);
-                console.log('tagSelectedImages after tag processing:', tagSelectedImages);
+                console.log('tagSelectedImages after tag processing (mode:', searchMode, '):', tagSelectedImages);
 
                 // Now combine selections for pool view display, respecting AND/OR mode
                 let allSelectedImageIds;
@@ -2075,10 +2077,12 @@
                     }
                 });
 
-                tagSelectedImages = [...new Set([...tagSelectedImages, ...newTagSelectedImages])];
+                // When mode changes, replace tagSelectedImages with new results (don't merge)
+                // This ensures AND mode shows only images matching ALL tags, OR mode shows images matching ANY tag
+                tagSelectedImages = newTagSelectedImages;
 
                 console.log('selectedImages after tag processing:', selectedImages);
-                console.log('tagSelectedImages after tag processing:', tagSelectedImages);
+                console.log('tagSelectedImages after tag processing (mode:', searchMode, '):', tagSelectedImages);
 
                 // 1) Use tagMatchingImages from API (already filtered by backend with correct mode)
                 // For AND mode: only show matching images. For OR mode: show matching first, then remaining
@@ -2235,7 +2239,7 @@
             // SPECIAL CASE: Always show controls in pool view, even with no images/selections
             if ((images.length > 0 && (currentSearchTags.length > 0 || selectedImages.length > 0)) || isPoolView) {
                 selectionControls.classList.remove('is-hidden');
-                updateSelectionState(); // This will call updateButtonVisibility()
+                await updateSelectionState(); // This will call updateButtonVisibility()
             } else {
                 selectionControls.classList.add('is-hidden');
                 // Only clear selectedImages if we're not in pool view and have no search tags
@@ -3171,6 +3175,7 @@
 
         // Update UI states
         updateClearButtonState();
+        // Note: updateSelectionState is async but we don't await here since displayLibraryImages will refresh everything
         updateSelectionState();
 
         // Refresh to show full library with no selections or filters
@@ -3538,12 +3543,60 @@
             }
         }
 
+        // Note: updateSelectionState is async but we don't await here to avoid blocking UI
         updateSelectionState();
     }
 
-    function updateSelectionState() {
-        selectionCount.textContent = `${selectedImages.length} selected`;
-        addToProjectBtn.disabled = selectedImages.length === 0;
+    // Helper function to calculate correct selection count considering AND/OR mode
+    async function calculateSelectionCount() {
+        const currentSearchTags = searchTags.map(tag => tag.text);
+        const searchMode = tagSearchMode;
+        
+        // In AND mode with active tags, filter manually selected images to only include those matching ALL tags
+        if (searchMode === 'AND' && currentSearchTags.length > 0) {
+            try {
+                // Fetch all images to check which manually selected images match all tags
+                const sessionToken = localStorage.getItem('sessionToken');
+                const headers = {};
+                if (sessionToken) {
+                    headers['Authorization'] = `Bearer ${sessionToken}`;
+                }
+                const allImagesResponse = await fetch(`${API_URL}/images`, { headers });
+                const allImages = allImagesResponse.ok ? await allImagesResponse.json() : [];
+                
+                const currentTagsLower = currentSearchTags.map(t => t.toLowerCase());
+                const manuallySelectedMatchingAll = selectedImages.filter(imgId => {
+                    const img = allImages.find(i => i.id === imgId);
+                    if (!img) return false;
+                    const imageTags = (img.tags || []).map(t => t.toLowerCase());
+                    return currentTagsLower.every(tag => imageTags.includes(tag));
+                });
+                
+                // Combine filtered manual selections with tag-selected images
+                return [...new Set([...manuallySelectedMatchingAll, ...tagSelectedImages])].length;
+            } catch (error) {
+                console.error('Error fetching images for AND mode selection count:', error);
+                // Fallback to simple count if fetch fails
+                return [...new Set([...selectedImages, ...tagSelectedImages])].length;
+            }
+        } else {
+            // OR mode or no tags: combine all selections
+            return [...new Set([...selectedImages, ...tagSelectedImages])].length;
+        }
+    }
+
+    async function updateSelectionState() {
+        // Calculate total selections: manual selections + tag-based selections (considering current mode)
+        const totalSelections = await calculateSelectionCount();
+        
+        // Update selection count display
+        if (totalSelections === 0) {
+            selectionCount.textContent = 'No image selected';
+        } else {
+            selectionCount.textContent = `${totalSelections} selected`;
+        }
+        
+        addToProjectBtn.disabled = totalSelections === 0;
         updateButtonVisibility();
         updateClearButtonState(); // Update Clear All button state when selections change
     }
@@ -5940,10 +5993,9 @@
     }
 
     // Clear All Confirmation Functions
-    function showClearAllConfirmation() {
-        // Count current selections and tags
-        const totalSelections = selectedImages.length + tagSelectedImages.length;
-        const uniqueSelections = [...new Set([...selectedImages, ...tagSelectedImages])].length;
+    async function showClearAllConfirmation() {
+        // Count current selections and tags (considering AND/OR mode)
+        const uniqueSelections = await calculateSelectionCount();
         const totalTags = searchTags.length;
 
         // Update modal content
@@ -6111,8 +6163,9 @@
     }
 
     // Delete Image Functions
-    function showDeleteImageModal() {
-        const totalSelected = selectedImages.length + tagSelectedImages.length;
+    async function showDeleteImageModal() {
+        // Count selections considering AND/OR mode
+        const totalSelected = await calculateSelectionCount();
         deleteCount.textContent = totalSelected;
         deleteImageModal.classList.remove('is-hidden');
     }
@@ -6813,8 +6866,8 @@
     // Removed searchModeRadios event listener - using default OR mode
 
     // Clear all button (clears both tags and selected images)
-    clearAllTagsBtn.addEventListener('click', () => {
-        showClearAllConfirmation();
+    clearAllTagsBtn.addEventListener('click', async () => {
+        await showClearAllConfirmation();
     });
 
     // Tag mode toggle button (AND/OR)
@@ -6831,7 +6884,13 @@
         // Refresh display immediately if there are search tags OR if in pool view
         if (searchTags.length > 0 || isPoolView) {
             console.log('Refreshing display with mode:', tagSearchMode, 'for tags:', searchTags.map(t => t.text));
-            displayLibraryImages();
+            displayLibraryImages().then(() => {
+                // Recalculate selection count after mode change (AND/OR affects tagSelectedImages)
+                updateSelectionState();
+            });
+        } else {
+            // Even if no tags, update selection count in case mode affects display
+            updateSelectionState();
         }
     });
 
@@ -6890,9 +6949,9 @@
         console.log('Update Tag button clicked - showing modal');
         showUpdateTagModal();
     });
-    deleteImageBtn.addEventListener('click', () => {
+    deleteImageBtn.addEventListener('click', async () => {
         console.log('Delete Image button clicked - showing modal');
-        showDeleteImageModal();
+        await showDeleteImageModal();
     });
     viewPoolBtn.addEventListener('click', handleViewPoolClick);
     backToLibraryBtn.addEventListener('click', backToLibrary);
