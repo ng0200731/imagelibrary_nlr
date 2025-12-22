@@ -1586,6 +1586,26 @@
                 return !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
             });
 
+            // Check how many SEARCH TAGS this image matches (not how many image tags match)
+            // This determines if the image appears in results for multiple different search tags
+            let matchingSearchTagsCount = 0;
+            if (currentSearchTags.length > 0) {
+                const imageTagLower = allImageTags.map(t => t.toLowerCase());
+                matchingSearchTagsCount = currentSearchTags.filter(searchTag => {
+                    const searchLower = searchTag.toLowerCase();
+                    if (!searchLower) return false;
+                    // Only count subjective tags (no colon prefix)
+                    const subjectiveImageTags = imageTagLower.filter(t => 
+                        !objectivePrefixes.some(prefix => t.startsWith(prefix))
+                    );
+                    return subjectiveImageTags.some(imageTag => {
+                        return exactWordMode
+                            ? imageTag === searchLower
+                            : imageTag.includes(searchLower);
+                    });
+                }).length;
+            }
+
             // Always show all tags (or first 3 + count), but highlight if there are matches.
             // The overlay color should follow the GROUP tag (earliest chip the image matches),
             // so all images in the same group share the same box color.
@@ -1631,9 +1651,10 @@
                 }
             }
 
-            // If this image belongs to more than one active search tag,
+            // If this image matches more than one active SEARCH TAG,
             // we treat it as a "duplicate across tags"
-            const isDuplicateAcrossTags = matchingSubjectiveTags.length > 1;
+            // (e.g., if you search for both "spider" and "pink", and an image matches both)
+            const isDuplicateAcrossTags = matchingSearchTagsCount > 1;
             const maxTagsToShow = 3;
             const tagsToShow = subjectiveTags.slice(0, maxTagsToShow);
 
@@ -1641,11 +1662,21 @@
             tagOverlay.textContent = '';
 
             // Reorder so duplicate-overlap tags (red ones) appear FIRST in this line
+            // Only highlight tags that match the search tags when image matches multiple search tags
             const dupTags = [];
             const nonDupTags = [];
             tagsToShow.forEach(tag => {
-                const isDupTag = isDuplicateAcrossTags &&
-                    matchingSubjectiveTags.some(mt => mt.toLowerCase() === tag.toLowerCase());
+                const tagLower = tag.toLowerCase();
+                // Check if this image tag matches any of the search tags
+                const matchesSearchTag = currentSearchTags.some(searchTag => {
+                    const searchLower = searchTag.toLowerCase();
+                    if (!searchLower) return false;
+                    return exactWordMode
+                        ? tagLower === searchLower
+                        : tagLower.includes(searchLower);
+                });
+                // Only mark as dup tag if image matches multiple search tags AND this tag matches a search tag
+                const isDupTag = isDuplicateAcrossTags && matchesSearchTag;
                 if (isDupTag) {
                     dupTags.push(tag);
                 } else {
@@ -1664,10 +1695,17 @@
                 const span = document.createElement('span');
                 span.textContent = tag;
 
-                // If image is under more than one active tag and this tag is one of them,
+                // If image matches multiple search tags and this tag matches one of them,
                 // show this tag text in red to mark the duplicate image.
-                if (isDuplicateAcrossTags &&
-                    matchingSubjectiveTags.some(mt => mt.toLowerCase() === tag.toLowerCase())) {
+                const tagLower = tag.toLowerCase();
+                const matchesSearchTag = currentSearchTags.some(searchTag => {
+                    const searchLower = searchTag.toLowerCase();
+                    if (!searchLower) return false;
+                    return exactWordMode
+                        ? tagLower === searchLower
+                        : tagLower.includes(searchLower);
+                });
+                if (isDuplicateAcrossTags && matchesSearchTag) {
                     span.style.color = 'red';
                     span.style.fontWeight = '600';
                 }
