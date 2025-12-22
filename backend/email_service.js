@@ -289,24 +289,22 @@ function generateHtmlContent(projectData, senderMessage) {
     console.log('[Email HTML] isArray:', Array.isArray(projectTags));
     console.log('[Email HTML] length:', projectTags ? projectTags.length : 'N/A');
     
-    // Format tags with operator (OR/AND)
+    // Format tags with operator (OR/AND) - SIMPLE AND DIRECT
     let tagsDisplay = 'No tags';
     if (Array.isArray(projectTags) && projectTags.length > 0) {
-        const operator = searchMode.toUpperCase();
-        // Clean tags and join with operator
-        const cleanedTags = projectTags.map(tag => String(tag).trim().toLowerCase()).filter(tag => tag.length > 0);
-        if (cleanedTags.length > 0) {
-            tagsDisplay = cleanedTags.join(` ${operator} `);
-        }
+        const operator = (searchMode || 'OR').toUpperCase();
+        // Simply join tags with operator - no complex processing
+        tagsDisplay = projectTags.map(tag => String(tag).trim()).filter(tag => tag.length > 0).join(` ${operator} `);
     }
     
     console.log('[Email HTML] tagsDisplay value:', tagsDisplay);
     console.log('[Email HTML] searchMode used:', searchMode);
+    console.log('[Email HTML] projectTags array:', JSON.stringify(projectTags));
     
     html += `
         <div class="project-info">
             <h2>Tags:</h2>
-            <div style="padding: 8px; color: #333; font-size: 14px; white-space: nowrap;">
+            <div style="padding: 8px; color: #333; font-size: 14px;">
                 ${tagsDisplay}
             </div>
         </div>

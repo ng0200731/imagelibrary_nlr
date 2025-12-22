@@ -21,9 +21,9 @@
         <a id="nav-library" class="menu__item is-active" href="#">Image Library</a>
         <a id="nav-upload" class="menu__item" href="#">Upload Image</a>
         <a id="nav-project" class="menu__item" href="#">Project</a>
-        <a id="nav-tags" class="menu__item" href="#">Tags</a>
+        <a id="nav-tags" class="menu__item is-hidden" href="#">Tags</a>
         <a id="nav-admin" class="menu__item is-hidden" href="#">Admin Panel</a>
-        <a id="nav-settings" class="menu__item" href="#" onclick="openSettings()">Settings</a>
+        <a id="nav-settings" class="menu__item is-hidden" href="#" onclick="openSettings()">Settings</a>
       </nav>
 
       <div class="version-wrapper">
@@ -2580,6 +2580,16 @@
         if (confirmModal && !confirmModal.classList.contains('is-hidden')) {
             return;
         }
+        
+        // Level-based access control: Level 1 users can only access library, upload, and project
+        if (currentUser) {
+            const userLevel = parseInt(currentUser.level, 10) || 1;
+            if (userLevel === 1 && (pageName === 'admin' || pageName === 'tags')) {
+                alert('Access restricted. Level 1 users can only access Image Library, Upload Image, and Project.');
+                return;
+            }
+        }
+        
         Object.values(pages).forEach(page => page.classList.add('is-hidden'));
         document.querySelectorAll('.menu__item').forEach(link => link.classList.remove('is-active'));
         pages[pageName].classList.remove('is-hidden');
@@ -5691,15 +5701,58 @@
             const result = await response.json();
             currentUser = result.user;
 
-            // Show/hide admin menu item based on admin role
+            // Get user level (default to 1 if not set)
+            const userLevel = parseInt(currentUser.level, 10) || 1;
+            console.log('User level check:', { level: currentUser.level, parsedLevel: userLevel, role: currentUser.role });
+
+            // Get navigation elements
             const adminLink = document.getElementById('nav-admin');
             const settingsLink = document.getElementById('nav-settings');
-            if (currentUser.role === 'admin') {
-                if (adminLink) adminLink.classList.remove('is-hidden');
-                if (settingsLink) settingsLink.style.display = 'block';
+            const tagsLink = document.getElementById('nav-tags');
+
+            // Level-based visibility: Level 1 users can only see Image Library, Upload Image, and Project
+            // This check takes priority over admin role
+            if (userLevel === 1) {
+                console.log('Level 1 user detected - hiding Tags, Admin Panel, and Settings');
+                // Hide Tags, Admin Panel, and Settings for level 1 users (regardless of admin role)
+                if (tagsLink) {
+                    tagsLink.classList.add('is-hidden');
+                    tagsLink.style.display = 'none';
+                }
+                if (adminLink) {
+                    adminLink.classList.add('is-hidden');
+                    adminLink.style.display = 'none';
+                }
+                if (settingsLink) {
+                    settingsLink.classList.add('is-hidden');
+                    settingsLink.style.display = 'none';
+                }
             } else {
-                if (adminLink) adminLink.classList.add('is-hidden');
-                if (settingsLink) settingsLink.style.display = 'none';
+                // Level 2+ users: Show/hide based on admin role
+                if (currentUser.role === 'admin') {
+                    if (adminLink) {
+                        adminLink.classList.remove('is-hidden');
+                        adminLink.style.display = '';
+                    }
+                    if (settingsLink) {
+                        settingsLink.classList.remove('is-hidden');
+                        settingsLink.style.display = '';
+                    }
+                } else {
+                    if (adminLink) {
+                        adminLink.classList.add('is-hidden');
+                        adminLink.style.display = 'none';
+                    }
+                    if (settingsLink) {
+                        settingsLink.classList.add('is-hidden');
+                        settingsLink.style.display = 'none';
+                    }
+                }
+                // Show Tags for level 2+ users
+                if (tagsLink) {
+                    tagsLink.classList.remove('is-hidden');
+                    tagsLink.style.display = '';
+                }
             }
 
             // Update email display in headers
