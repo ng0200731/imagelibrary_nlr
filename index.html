@@ -2320,7 +2320,7 @@
                 console.log('Library view with no active tags, sorted latest first, preserving tagSelectedImages:', tagSelectedImages.length);
             } else {
                 // Library view with search tags (NOT pool view):
-                // Delegate matching to backend, which already filters to subjective tags only
+                // Show matching images from backend, but allow manual selection
                 console.log('=== LIBRARY VIEW WITH SEARCH TAGS (BACKEND FILTER) ===');
 
                 const sessionToken2 = localStorage.getItem('sessionToken');
@@ -2348,10 +2348,19 @@
                 const tagMatchingImages = await tagResponse.json();
                 console.log('Tag-matching images from backend (subjective only) found:', tagMatchingImages.length);
 
-                // For both OR & AND mode in library view, simply show the backend result.
-                // (Backend already handles AND/OR logic and subjective tag filtering.)
-                imagesToDisplay = tagMatchingImages.slice().sort((a, b) => b.id - a.id);
-                console.log('Library view with search tags - displaying backend results only. Total:', imagesToDisplay.length);
+                // In library view with tags: show matching images first, then all other images
+                // This allows users to see matching results AND browse/select other images manually
+                const matchingImageIds = new Set(tagMatchingImages.map(img => img.id));
+                const nonMatchingImages = allImages.filter(img => !matchingImageIds.has(img.id));
+                
+                // Sort matching images by ID (latest first)
+                const sortedMatchingImages = tagMatchingImages.slice().sort((a, b) => b.id - a.id);
+                // Sort non-matching images by ID (latest first)
+                const sortedNonMatchingImages = nonMatchingImages.sort((a, b) => b.id - a.id);
+                
+                // Combine: matching images first, then non-matching images
+                imagesToDisplay = [...sortedMatchingImages, ...sortedNonMatchingImages];
+                console.log('Library view with search tags - displaying matching images first, then all others. Matching:', sortedMatchingImages.length, 'Non-matching:', sortedNonMatchingImages.length, 'Total:', imagesToDisplay.length);
             }
 
             // Update header based on view type - check if we're showing selection pool
@@ -4222,7 +4231,7 @@
             
             console.log('About to update title to Library view');
 
-            // Update header back to normal library view
+            // Update header back to normal library view FIRST
             updateLibraryTitle(false);
             console.log('Title updated to Library view');
 
@@ -4246,11 +4255,30 @@
                 console.log('Search tags and selections preserved:', selectedImages.length, 'tags:', searchTags.length);
             }
 
+            // Update button visibility BEFORE refreshing view
+            updateButtonVisibility();
+
             // Refresh library view (will show all images with preserved selections)
             console.log('Calling displayLibraryImages...');
             displayLibraryImages().then(() => {
                 console.log('displayLibraryImages completed successfully');
+                console.log('isPoolView after:', isPoolView);
                 console.log('tagSelectedImages after:', tagSelectedImages);
+                
+                // Ensure search input is enabled when back in library view
+                const searchInput = document.getElementById('library-search-input');
+                const clearAllBtn = document.getElementById('clear-all-tags');
+                if (searchInput) {
+                    searchInput.disabled = false;
+                    searchInput.style.opacity = '1';
+                    searchInput.style.cursor = 'text';
+                }
+                if (clearAllBtn) {
+                    clearAllBtn.disabled = false;
+                    clearAllBtn.style.opacity = '1';
+                    clearAllBtn.style.cursor = 'pointer';
+                }
+                
                 console.log('=== backToLibrary END ===');
             }).catch(error => {
                 console.error('Error in displayLibraryImages:', error);

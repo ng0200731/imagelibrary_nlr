@@ -1266,6 +1266,33 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   outline: none;
 }
 
+/* Exact word toggle should visually match the OR/AND tag-mode toggle */
+.exact-word-toggle-btn {
+  padding: 8px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: bold;
+  min-width: 80px; /* slightly wider to fit text */
+}
+
+.exact-word-toggle-btn:hover,
+.exact-word-toggle-btn:focus {
+  background: #000;
+  color: #fff;
+  outline: none;
+}
+
+/* Exact word toggle: keep "active" styling even when it loses focus */
+.exact-word-toggle-btn.is-active {
+  background: #000;
+  color: #fff;
+}
+
 .update-tag-btn {
   background: #4CAF50;
   color: white;
