@@ -4271,8 +4271,11 @@
         console.log('=== viewSelectionPool START ===');
         console.log('selectedImages:', selectedImages);
         console.log('selectedImages.length:', selectedImages.length);
+        console.log('tagSelectedImages:', tagSelectedImages);
+        console.log('tagSelectedImages.length:', tagSelectedImages.length);
 
-        if (selectedImages.length === 0) {
+        const totalSelections = (selectedImages.length || 0) + (tagSelectedImages.length || 0);
+        if (totalSelections === 0) {
             alert('No images selected. Please select some images first.');
             return;
         }
