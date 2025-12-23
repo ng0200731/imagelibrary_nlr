@@ -1333,25 +1333,17 @@ app.post('/auth/logout', async (req, res) => {
 
 // Admin: Get all users (requires admin role)
 app.get('/admin/users', async (req, res) => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'No valid session token' });
-    }
-
-    const sessionToken = authHeader.substring(7);
-
     try {
-        // Verify admin session
-        const session = db.prepare(`
-            SELECT s.*, u.email, u.role
-            FROM login_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.session_token = ? AND s.expires_at > datetime('now') AND u.role = 'admin'
-        `).get(sessionToken);
+        // Verify admin session or level 3 user
+        const sessionUser = getUserFromSession(req);
+        const userLevel = sessionUser ? (parseInt(sessionUser.level) || 1) : 1;
 
-        if (!session) {
-            return res.status(403).json({ error: 'Admin access required' });
+        if (!sessionUser) {
+            return res.status(401).json({ error: 'No valid session token' });
+        }
+
+        if (!(sessionUser.role && sessionUser.role.toLowerCase() === 'admin') && userLevel < 3) {
+            return res.status(403).json({ error: 'Admin or level 3 access required' });
         }
 
         // Get all users (include level), normalize email to lowercase for display
@@ -1384,26 +1376,19 @@ app.get('/admin/users', async (req, res) => {
 
 // Admin: Approve user
 app.post('/admin/users/:id/approve', async (req, res) => {
-    const authHeader = req.headers.authorization;
     const userId = parseInt(req.params.id);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'No valid session token' });
-    }
-
-    const sessionToken = authHeader.substring(7);
-
     try {
-        // Verify admin session
-        const session = db.prepare(`
-            SELECT s.*, u.email, u.role
-            FROM login_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.session_token = ? AND s.expires_at > datetime('now') AND u.role = 'admin'
-        `).get(sessionToken);
+        // Verify admin session or level 3 user
+        const sessionUser = getUserFromSession(req);
+        const userLevel = sessionUser ? (parseInt(sessionUser.level) || 1) : 1;
 
-        if (!session) {
-            return res.status(403).json({ error: 'Admin access required' });
+        if (!sessionUser) {
+            return res.status(401).json({ error: 'No valid session token' });
+        }
+
+        if (!(sessionUser.role && sessionUser.role.toLowerCase() === 'admin') && userLevel < 3) {
+            return res.status(403).json({ error: 'Admin or level 3 access required' });
         }
 
         // Get user to approve
@@ -1429,27 +1414,20 @@ app.post('/admin/users/:id/approve', async (req, res) => {
 
 // Admin: Update user level (1, 2, 3)
 app.post('/admin/users/:id/level', async (req, res) => {
-    const authHeader = req.headers.authorization;
     const userId = parseInt(req.params.id);
     const { level } = req.body || {};
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'No valid session token' });
-    }
-
-    const sessionToken = authHeader.substring(7);
-
     try {
-        // Verify admin session
-        const session = db.prepare(`
-            SELECT s.*, u.email, u.role
-            FROM login_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.session_token = ? AND s.expires_at > datetime('now') AND u.role = 'admin'
-        `).get(sessionToken);
+        // Verify admin session or level 3 user
+        const sessionUser = getUserFromSession(req);
+        const userLevel = sessionUser ? (parseInt(sessionUser.level) || 1) : 1;
 
-        if (!session) {
-            return res.status(403).json({ error: 'Admin access required' });
+        if (!sessionUser) {
+            return res.status(401).json({ error: 'No valid session token' });
+        }
+
+        if (!(sessionUser.role && sessionUser.role.toLowerCase() === 'admin') && userLevel < 3) {
+            return res.status(403).json({ error: 'Admin or level 3 access required' });
         }
 
         const numericLevel = parseInt(level, 10);
@@ -1474,26 +1452,19 @@ app.post('/admin/users/:id/level', async (req, res) => {
 
 // Admin: Delete user
 app.delete('/admin/users/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
     const userId = parseInt(req.params.id);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'No valid session token' });
-    }
-
-    const sessionToken = authHeader.substring(7);
-
     try {
-        // Verify admin session
-        const session = db.prepare(`
-            SELECT s.*, u.email, u.role, u.id as admin_user_id
-            FROM login_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.session_token = ? AND s.expires_at > datetime('now') AND u.role = 'admin'
-        `).get(sessionToken);
+        // Verify admin session or level 3 user
+        const sessionUser = getUserFromSession(req);
+        const userLevel = sessionUser ? (parseInt(sessionUser.level) || 1) : 1;
 
-        if (!session) {
-            return res.status(403).json({ error: 'Admin access required' });
+        if (!sessionUser) {
+            return res.status(401).json({ error: 'No valid session token' });
+        }
+
+        if (!(sessionUser.role && sessionUser.role.toLowerCase() === 'admin') && userLevel < 3) {
+            return res.status(403).json({ error: 'Admin or level 3 access required' });
         }
 
         // Prevent admin from deleting themselves

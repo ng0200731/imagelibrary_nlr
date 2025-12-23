@@ -182,7 +182,10 @@
   </div>
 
   <script>
-    const API_URL = 'http://localhost:3000';
+    // Match the SPA behavior: if served on :8080, point to :3000; otherwise use origin.
+    const API_URL = (window.location.origin.includes(':8080'))
+      ? window.location.origin.replace(':8080', ':3000')
+      : window.location.origin;
     
     // DOM elements
     const messageDiv = document.getElementById('message');
@@ -222,7 +225,9 @@
         });
         
         if (response.status === 401 || response.status === 403) {
-          window.location.href = '/login.html';
+          const errorText = await response.text().catch(() => '');
+          console.error('Admin loadUsers auth error:', response.status, errorText);
+          showMessage('Access denied. Please log in with admin or level 3 rights.', 'error');
           return;
         }
         

@@ -5949,11 +5949,17 @@
         });
     }
 
+    function hasAdminPrivileges() {
+        if (!currentUser) return false;
+        const userLevel = parseInt(currentUser.level, 10) || 1;
+        return currentUser.role === 'admin' || userLevel === 3;
+    }
+
     function openSettings() {
-        if (currentUser && currentUser.role === 'admin') {
+        if (hasAdminPrivileges()) {
             navigateTo('admin');
         } else {
-            alert('Admin access required');
+            alert('Admin or level 3 access required');
         }
     }
 
@@ -5979,7 +5985,9 @@
             });
             
             if (response.status === 401 || response.status === 403) {
-                window.location.href = '/login.html';
+                const errorText = await response.text().catch(() => '');
+                console.error('Admin loadAdminUsers auth error:', response.status, errorText);
+                showAdminMessage('Access denied. Please log in with admin or level 3 rights.', 'error');
                 return;
             }
             
@@ -6925,10 +6933,10 @@
     if (navLinks.admin) {
         navLinks.admin.addEventListener('click', (e) => { 
             e.preventDefault(); 
-            if (currentUser && currentUser.role === 'admin') {
+            if (hasAdminPrivileges()) {
                 navigateTo('admin'); 
             } else {
-                alert('Admin access required');
+                alert('Admin or level 3 access required');
             }
         });
     }
@@ -7907,8 +7915,8 @@
             return;
         }
 
-        if (!currentUser || currentUser.role !== 'admin') {
-            console.error('Admin access required. Please log in as admin.');
+        if (!hasAdminPrivileges()) {
+            console.error('Admin or level 3 access required. Please log in with sufficient access.');
             return;
         }
 
@@ -8110,8 +8118,8 @@
             return;
         }
 
-        if (!currentUser || currentUser.role !== 'admin') {
-            console.error('Admin access required.');
+        if (!hasAdminPrivileges()) {
+            console.error('Admin or level 3 access required.');
             return;
         }
 
