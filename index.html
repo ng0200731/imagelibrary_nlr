@@ -1652,9 +1652,8 @@
             }
 
             // If this image matches more than one active SEARCH TAG,
-            // we treat it as a "duplicate across tags"
-            // (e.g., if you search for both "spider" and "pink", and an image matches both)
-            const isDuplicateAcrossTags = matchingSearchTagsCount > 1;
+            // we treat it as a "duplicate across tags" only in OR mode.
+            const isDuplicateAcrossTags = (tagSearchMode === 'OR') && matchingSearchTagsCount > 1;
             const maxTagsToShow = 3;
             const tagsToShow = subjectiveTags.slice(0, maxTagsToShow);
 
@@ -2320,7 +2319,7 @@
                 console.log('Library view with no active tags, sorted latest first, preserving tagSelectedImages:', tagSelectedImages.length);
             } else {
                 // Library view with search tags (NOT pool view):
-                // Show matching images from backend, but allow manual selection
+                // Show matching images first, then all other images (allow browsing non-matching)
                 console.log('=== LIBRARY VIEW WITH SEARCH TAGS (BACKEND FILTER) ===');
 
                 // Sync exactWordMode with button state before searching
@@ -2363,19 +2362,66 @@
                 console.log('[FRONTEND] Tag-matching images from backend (subjective only) found:', tagMatchingImages.length);
                 console.log('[FRONTEND] Match mode used:', matchMode, 'exactWordMode was:', exactWordMode);
 
-                // In library view with tags: show matching images first, then all other images
-                // This allows users to see matching results AND browse/select other images manually
-                const matchingImageIds = new Set(tagMatchingImages.map(img => img.id));
-                const nonMatchingImages = allImages.filter(img => !matchingImageIds.has(img.id));
-                
-                // Sort matching images by ID (latest first)
-                const sortedMatchingImages = tagMatchingImages.slice().sort((a, b) => b.id - a.id);
-                // Sort non-matching images by ID (latest first)
-                const sortedNonMatchingImages = nonMatchingImages.sort((a, b) => b.id - a.id);
-                
-                // Combine: matching images first, then non-matching images
-                imagesToDisplay = [...sortedMatchingImages, ...sortedNonMatchingImages];
-                console.log('Library view with search tags - displaying matching images first, then all others. Matching:', sortedMatchingImages.length, 'Non-matching:', sortedNonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                // Keep tagSelectedImages in sync with current search mode/results (AND/OR)
+                tagSelectedImages = tagMatchingImages.map(img => img.id);
+
+                // Group matching images by chip order (left -> right) so newest input tag appears first
+                const chipContainer = document.getElementById('library-search-chips');
+                let chipTagsInOrder = [];
+                if (chipContainer) {
+                    chipTagsInOrder = Array.from(chipContainer.querySelectorAll('.search-chip'))
+                        .map(chip => (chip.dataset.tag || '').toLowerCase())
+                        .filter(tag => tag);
+                }
+
+                // Helper: does image match a search tag (respecting exact/partial)
+                const imageMatchesTag = (imgTags, searchTag) => {
+                    const searchLower = searchTag.toLowerCase();
+                    if (!searchLower) return false;
+                    return imgTags.some(imageTag => {
+                        const tagLower = imageTag.toLowerCase();
+                        return exactWordMode ? (tagLower === searchLower) : tagLower.includes(searchLower);
+                    });
+                };
+
+                // Split matching images by chip order priority
+                const priorityBuckets = [];
+                chipTagsInOrder.forEach(tag => priorityBuckets.push({ tag, images: [] }));
+                const remainingMatches = [];
+
+                tagMatchingImages.forEach(img => {
+                    const imgTags = img.tags || [];
+                    let placed = false;
+                    for (let i = 0; i < chipTagsInOrder.length; i++) {
+                        if (imageMatchesTag(imgTags, chipTagsInOrder[i])) {
+                            priorityBuckets[i].images.push(img);
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) remainingMatches.push(img);
+                });
+
+                // Sort each bucket by ID desc
+                priorityBuckets.forEach(bucket => bucket.images.sort((a, b) => b.id - a.id));
+                remainingMatches.sort((a, b) => b.id - a.id);
+
+                // Flatten buckets in chip order, then remaining matches
+                const orderedMatches = [
+                    ...priorityBuckets.flatMap(b => b.images),
+                    ...remainingMatches
+                ];
+
+                // For AND mode: show ONLY matching images. For OR: matching first, then non-matching.
+                if (searchMode === 'AND') {
+                    imagesToDisplay = orderedMatches;
+                    console.log('Library view with search tags - AND mode: showing ONLY matching images. Matching:', orderedMatches.length);
+                } else {
+                    const matchingIds = new Set(tagMatchingImages.map(img => img.id));
+                    const nonMatchingImages = allImages.filter(img => !matchingIds.has(img.id)).sort((a, b) => b.id - a.id);
+                    imagesToDisplay = [...orderedMatches, ...nonMatchingImages];
+                    console.log('Library view with search tags - OR mode: matching first (by chip order), then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                }
             }
 
             // Update header based on view type - check if we're showing selection pool
