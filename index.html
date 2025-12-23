@@ -1679,6 +1679,7 @@
             // If this image matches more than one active SEARCH TAG,
             // we treat it as a "duplicate across tags" only in OR mode.
             const isDuplicateAcrossTags = (tagSearchMode === 'OR') && matchingSearchTagsCount > 1;
+            const isAndAllTagsMatch = (tagSearchMode === 'AND') && isTagSelected && currentSearchTags.length > 1;
             const maxTagsToShow = 3;
             const tagsToShow = subjectiveTags.slice(0, maxTagsToShow);
 
@@ -1743,13 +1744,15 @@
                 tagOverlay.appendChild(moreSpan);
             }
 
-            // Extra visual highlight for duplicate images across tags
+            // Extra visual highlight for duplicate images across tags (OR) and all-tags matches (AND)
             if (isDuplicateAcrossTags) {
                 // Strong red outline + glow
                 card.style.outline = '3px solid red';
                 card.style.outlineOffset = '3px';
                 card.style.boxShadow = '0 0 8px rgba(255,0,0,0.7)';
+            }
 
+            if (isDuplicateAcrossTags || isAndAllTagsMatch) {
                 // Small "DUP" badge in the top-left corner
                 card.style.position = card.style.position || 'relative';
                 const dupBadge = document.createElement('div');
@@ -2160,6 +2163,23 @@
 
                 if (shouldHighlightOverlay) {
                     tagOverlay.classList.add('has-matches');
+                }
+
+                const isAndAllTagsMatch = (tagSearchMode === 'AND') && isTagSelected && currentSearchTags.length > 1;
+                if (isAndAllTagsMatch) {
+                    const dupBadge = document.createElement('div');
+                    dupBadge.textContent = 'DUP';
+                    dupBadge.style.position = 'absolute';
+                    dupBadge.style.top = '4px';
+                    dupBadge.style.left = '4px';
+                    dupBadge.style.padding = '2px 4px';
+                    dupBadge.style.fontSize = '10px';
+                    dupBadge.style.fontWeight = '600';
+                    dupBadge.style.backgroundColor = 'rgba(255,0,0,0.9)';
+                    dupBadge.style.color = '#ffffff';
+                    dupBadge.style.borderRadius = '3px';
+                    dupBadge.style.zIndex = '2';
+                    tagOverlay.appendChild(dupBadge);
                 }
 
                 tagOverlay.textContent = subjectiveTags.slice(0, 3).join(', ');
