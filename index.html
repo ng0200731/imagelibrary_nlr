@@ -1382,12 +1382,33 @@
         // Add tags container
         const tagsContainer = document.createElement('div');
         tagsContainer.className = 'tags-hover-modal-tags';
-        
+
+        // Get current search tags for highlighting
+        const currentSearchTags = getActiveSearchTagTexts();
+
         // Add subjective tags only
         subjectiveTags.forEach(tag => {
             const tagElement = document.createElement('span');
             tagElement.className = 'tags-hover-tag';
             tagElement.textContent = tag;
+
+            // Check if this tag matches any of the search tags
+            const tagLower = tag.toLowerCase();
+            const matchesSearchTag = currentSearchTags.some(searchTag => {
+                const searchLower = searchTag.toLowerCase();
+                if (!searchLower) return false;
+                return exactWordMode
+                    ? tagLower === searchLower
+                    : tagLower.includes(searchLower);
+            });
+
+            // Highlight matching tags
+            if (matchesSearchTag) {
+                tagElement.style.backgroundColor = '#ffd700';
+                tagElement.style.color = '#000';
+                tagElement.style.fontWeight = '600';
+            }
+
             tagsContainer.appendChild(tagElement);
         });
         
