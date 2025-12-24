@@ -550,10 +550,23 @@ app.get('/images', (req, res) => {
         if (isPartialMatch && mode.toUpperCase() === 'AND' && tags.length > 0) {
             const tagsLower = tags.map(t => t.toLowerCase());
             imagesWithTags = imagesWithTags.filter(image => {
-                const imageTagsLower = (image.tags || []).map(t => t.toLowerCase());
-                return tagsLower.every(searchTag =>
+                // Only check subjective tags (exclude objective metadata with colons)
+                const subjectiveTags = (image.tags || []).filter(t => !t.includes(':'));
+                const imageTagsLower = subjectiveTags.map(t => t.toLowerCase());
+
+                const matches = tagsLower.every(searchTag =>
                     imageTagsLower.some(tagName => tagName.includes(searchTag))
                 );
+
+                // Debug logging for image 190
+                if (image.id === 190) {
+                    console.log('[DEBUG 190] Image tags:', image.tags);
+                    console.log('[DEBUG 190] Subjective tags:', subjectiveTags);
+                    console.log('[DEBUG 190] Search tags:', tagsLower);
+                    console.log('[DEBUG 190] Matches:', matches);
+                }
+
+                return matches;
             });
         }
 

@@ -992,6 +992,7 @@
     let projects = []; // Store created projects
     let isPoolView = false; // Track if we're viewing selection pool
     let forceLibraryView = false; // Flag to prevent auto-switching to pool view
+    let chipsReferenceOnly = false; // If true, visible chips are for display only and should not be used as active search tags
     let lastCreatedProject = null; // Store the last created project for navigation
     let isDetailedProjectView = false; // Track if we're in detailed project view mode
     let autocompleteVisible = false; // Track if autocomplete dropdown is visible
@@ -1576,6 +1577,16 @@
         });
 
         const isAndMode = (tagSearchMode === 'AND');
+
+        // Sync exactWordMode with button state before matching logic
+        if (exactWordToggleBtn) {
+            const buttonIsActive = exactWordToggleBtn.classList.contains('is-active');
+            if (exactWordMode !== buttonIsActive) {
+                console.warn('[SYNC] exactWordMode out of sync! Variable:', exactWordMode, 'Button:', buttonIsActive);
+                exactWordMode = buttonIsActive;
+            }
+        }
+
         let matchesAllSearchTags = false;
         if (currentSearchTags.length > 0) {
             const subjectiveImageTags = allImageTags
@@ -1802,13 +1813,32 @@
             const wasAlreadySelected = selectedImages.includes(image.id);
             const hasMatchingTags = (tagSearchMode === 'OR') && currentSearchTags.length > 0 && matchingTags.length > 0;
 
+            // Debug for happy image
+            if (image.tags && image.tags.some(t => t.toLowerCase() === 'happy')) {
+                console.log('[HAPPY DEBUG]', {
+                    imageId: image.id,
+                    wasAlreadySelected,
+                    isInTagSelectedImages: tagSelectedImages.includes(image.id),
+                    tagSearchMode,
+                    currentSearchTags,
+                    isAndMode,
+                    isTagSelected,
+                    hasMatchingTags
+                });
+            }
+
             // In AND mode, treat "has matching tags" only when image matches ALL active tags.
             const effectiveHasMatchingTags = isAndMode
                 ? isTagSelected
                 : hasMatchingTags;
 
+            // In AND mode with active tags, only true AND matches should appear selected.
+            const shouldShowSelected = (isAndMode && currentSearchTags.length > 0)
+                ? effectiveHasMatchingTags
+                : (wasAlreadySelected || effectiveHasMatchingTags);
+
             // Handle selection logic (same for both pool view and library view)
-            if (wasAlreadySelected || effectiveHasMatchingTags) {
+            if (shouldShowSelected) {
                 card.classList.add('selected');
 
                 // Add pool-view class if in pool view for styling
@@ -2147,6 +2177,15 @@
             let matchingSearchTagsCount = 0;
             let matchesAllSearchTags = false;
             if (currentSearchTags.length > 0) {
+                // Sync exactWordMode with button state before matching logic
+                if (exactWordToggleBtn) {
+                    const buttonIsActive = exactWordToggleBtn.classList.contains('is-active');
+                    if (exactWordMode !== buttonIsActive) {
+                        console.warn('[SYNC] exactWordMode out of sync! Variable:', exactWordMode, 'Button:', buttonIsActive);
+                        exactWordMode = buttonIsActive;
+                    }
+                }
+
                 const imageTagLower = allImageTags.map(t => t.toLowerCase());
                 const subjectiveImageTags = imageTagLower.filter(t =>
                     !t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix))
@@ -2284,12 +2323,31 @@
             const wasAlreadySelected = selectedImages.includes(image.id);
             const hasMatchingTags = (tagSearchMode === 'OR') && currentSearchTags.length > 0 && matchingTags.length > 0;
 
+            // Debug for happy image
+            if (image.tags && image.tags.some(t => t.toLowerCase() === 'happy')) {
+                console.log('[HAPPY DEBUG 2]', {
+                    imageId: image.id,
+                    wasAlreadySelected,
+                    isInTagSelectedImages: tagSelectedImages.includes(image.id),
+                    tagSearchMode,
+                    currentSearchTags,
+                    isAndMode,
+                    isTagSelected,
+                    hasMatchingTags
+                });
+            }
+
             // In AND mode, treat "has matching tags" only when image matches ALL active tags.
             const effectiveHasMatchingTags = isAndMode
                 ? isTagSelected
                 : hasMatchingTags;
 
-            if (wasAlreadySelected || effectiveHasMatchingTags) {
+            // In AND mode with active tags, only true AND matches should appear selected.
+            const shouldShowSelected = (isAndMode && currentSearchTags.length > 0)
+                ? effectiveHasMatchingTags
+                : (wasAlreadySelected || effectiveHasMatchingTags);
+
+            if (shouldShowSelected) {
                 card.classList.add('selected');
 
                 if (isPoolView) {
@@ -2328,9 +2386,25 @@
         console.log('isPoolView at start:', isPoolView);
 
         const searchMode = tagSearchMode; // Use current tag search mode (OR or AND)
-        const currentSearchTags = searchTags.map(tag => tag.text);
+        const currentSearchTags = getActiveSearchTagTexts();
         console.log('currentSearchTags:', currentSearchTags);
         console.log('searchMode:', searchMode);
+
+        // Defensive: in AND mode with active tags, do not allow any stale non-manual selections
+        // (e.g., previously tag-merged selections) to remain in selectedImages.
+        if (searchMode === 'AND' && currentSearchTags.length > 0) {
+            const previous = selectedImages.slice();
+            const kept = previous.filter(id => imageSelectionSource[id] === 'manual');
+            const removed = previous.filter(id => imageSelectionSource[id] !== 'manual');
+            if (removed.length > 0) {
+                selectedImages = kept;
+                removed.forEach(id => {
+                    delete imageSelectionOrder[id];
+                    delete imageSelectionSource[id];
+                });
+                console.log('[AND mode] Removed stale non-manual selections:', removed);
+            }
+        }
 
         try {
             // Clear broken image tracking for new load
@@ -2446,7 +2520,11 @@
                         const img = allImages.find(i => i.id === imgId);
                         if (!img) return false;
                         const imageTags = (img.tags || []).map(t => t.toLowerCase());
-                        return currentTagsLower.every(tag => imageTags.includes(tag));
+                        return currentTagsLower.every(searchTag => {
+                            return imageTags.some(imageTag => {
+                                return exactWordMode ? (imageTag === searchTag) : imageTag.includes(searchTag);
+                            });
+                        });
                     });
                     // Use newTagSelectedImages (current API result) instead of tagSelectedImages (which may contain old OR-mode selections)
                     allSelectedImageIds = [...new Set([...manuallySelectedMatchingAll, ...newTagSelectedImages])];
@@ -2521,6 +2599,8 @@
 
                 const tagMatchingImages = await tagResponse.json();
                 console.log('[FRONTEND] Tag-matching images from backend (subjective only) found:', tagMatchingImages.length);
+                console.log('[FRONTEND] Backend returned image IDs:', tagMatchingImages.map(img => img.id));
+                console.log('[FRONTEND] Backend returned image tags:', tagMatchingImages.map(img => ({ id: img.id, tags: img.tags })));
                 console.log('[FRONTEND] Match mode used:', matchMode, 'exactWordMode was:', exactWordMode);
 
                 // Keep tagSelectedImages in sync with current search mode/results (AND/OR)
@@ -3348,6 +3428,9 @@
         forceLibraryView = false;
         console.log('Reset forceLibraryView to false when adding new tag:', text);
 
+        // Visible chips now represent active search tags again
+        chipsReferenceOnly = false;
+
         // Track tag input timestamp for ordering (most recent input first)
         const currentTimestamp = Date.now();
         tagCreationOrder[text] = currentTimestamp;
@@ -3668,6 +3751,8 @@
         console.log('clearAllSearchChips called - clearing everything and returning to main library');
         console.log('Before clear - searchTags:', searchTags.length, 'selectedImages:', selectedImages.length, 'tagSelectedImages:', tagSelectedImages.length, 'isPoolView:', isPoolView);
 
+        chipsReferenceOnly = false;
+
         // Clear all search tags
         searchTags = [];
         tagSelectedImages = []; // Clear tag-selected images
@@ -3775,6 +3860,24 @@
                     : imageTagLower.includes(searchLower);
             })
         );
+    }
+
+    function getActiveSearchTagTexts() {
+        if (searchTags && searchTags.length > 0) {
+            return searchTags.map(tag => tag.text);
+        }
+
+        if (chipsReferenceOnly) {
+            return [];
+        }
+
+        const chipContainer = document.getElementById('library-search-chips');
+        if (!chipContainer) return [];
+
+        const chips = Array.from(chipContainer.querySelectorAll('.search-chip'));
+        return chips
+            .map(chip => (chip.dataset.tag || '').trim())
+            .filter(t => t);
     }
 
     function displayLightboxTags(index) {
@@ -4082,7 +4185,7 @@
 
     // Helper function to calculate correct selection count considering AND/OR mode
     async function calculateSelectionCount() {
-        const currentSearchTags = searchTags.map(tag => tag.text);
+        const currentSearchTags = getActiveSearchTagTexts();
         const searchMode = tagSearchMode;
         
         // When tags are active, verify selections match the current mode
@@ -4168,7 +4271,7 @@
         console.log('updateButtonVisibility called, isPoolView:', isPoolView, 'selectedImages.length:', selectedImages.length);
         console.log('searchTags.length:', searchTags.length);
 
-        const currentSearchTags = searchTags.map(tag => tag.text);
+        const currentSearchTags = getActiveSearchTagTexts();
 
         // In pool view, consider both manual and tag selections.
         // In library view, only consider tag selections when there are active search tags.
@@ -4389,6 +4492,9 @@
         // Clear search tags to show ALL images (provides visual feedback)
         searchTags = [];
 
+        // Chips are visible for reference only in this mode
+        chipsReferenceOnly = true;
+
         // DON'T clear tagSelectedImages - preserve tag selection status for overlays
         // DON'T clear chips and input - keep them visible for user reference
 
@@ -4411,6 +4517,9 @@
 
         // Clear search tags to show ALL images (provides visual feedback)
         searchTags = [];
+
+        // Chips are visible for reference only in this mode
+        chipsReferenceOnly = true;
 
         // DON'T clear tagSelectedImages - preserve tag selection history for overlays
         // DON'T clear chips and input - keep them visible for user reference
@@ -4472,19 +4581,8 @@
             if (searchTags.length > 0) {
                 console.log('Preserving search tags and all selections in library view');
 
-                // Merge tag-selected images into selectedImages to preserve all selections
-                const allSelectedImages = [...new Set([...selectedImages, ...tagSelectedImages])];
-                selectedImages = allSelectedImages;
-
-                // Update selection source for merged images
-                tagSelectedImages.forEach(imageId => {
-                    if (!imageSelectionSource[imageId]) {
-                        imageSelectionSource[imageId] = 'tag-merged';
-                    }
-                });
-
                 // Keep tagSelectedImages as they are for proper display in library view
-                console.log('Search tags and selections preserved:', selectedImages.length, 'tags:', searchTags.length);
+                console.log('Search tags and selections preserved:', selectedImages.length + tagSelectedImages.length, 'tags:', searchTags.length);
             }
 
             // Update button visibility BEFORE refreshing view
@@ -4670,7 +4768,7 @@
 
     function generateSelectionBreakdown() {
         // Get current search tags and mode
-        const currentSearchTags = searchTags.map(tag => tag.text);
+        const currentSearchTags = getActiveSearchTagTexts();
         const searchMode = tagSearchMode;
 
         console.log('generateSelectionBreakdown - currentSearchTags:', currentSearchTags);
@@ -6382,6 +6480,13 @@
                 logout();
             });
         }
+
+        // Sync exactWordMode variable with button state on page load
+        if (exactWordToggleBtn) {
+            const buttonIsActive = exactWordToggleBtn.classList.contains('is-active');
+            exactWordMode = buttonIsActive;
+            console.log('Page load: synced exactWordMode with button state:', exactWordMode);
+        }
     });
 
     // Share Project Functions
@@ -7717,6 +7822,11 @@
         console.log('Tag search mode changed to:', tagSearchMode);
         console.log('Current view - isPoolView:', isPoolView, 'searchTags.length:', searchTags.length);
         updateTagModeButtonText();
+
+        // Clear tag-selected images when switching modes
+        // The backend will return new results based on the new mode
+        console.log('Clearing tagSelectedImages due to mode change');
+        tagSelectedImages = [];
 
         if (tagSearchMode === 'AND') {
             const previous = selectedImages.slice();
