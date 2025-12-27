@@ -639,6 +639,17 @@
         </div>
       </div>
 
+      <!-- Delete Uploaded Image Confirmation Modal -->
+      <div id="delete-upload-image-confirm-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Are you sure you want to remove this image from the upload list?</p>
+          <div class="modal-buttons">
+            <button id="delete-upload-image-cancel-btn" class="button">Cancel</button>
+            <button id="delete-upload-image-confirm-btn" class="button is-primary button--danger">Remove Image</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Clear All Confirmation Modal -->
       <div id="clear-all-confirm-modal" class="modal-overlay is-hidden">
         <div class="modal-content">
@@ -955,6 +966,11 @@
     const tagDeleteCancelBtn = document.getElementById('tag-delete-cancel-btn');
     const tagDeleteConfirmBtn = document.getElementById('tag-delete-confirm-btn');
     let pendingTagDelete = null;
+
+    // Delete uploaded image confirmation modal elements
+    const deleteUploadImageConfirmModal = document.getElementById('delete-upload-image-confirm-modal');
+    const deleteUploadImageCancelBtn = document.getElementById('delete-upload-image-cancel-btn');
+    const deleteUploadImageConfirmBtn = document.getElementById('delete-upload-image-confirm-btn');
 
     // Clear all confirmation modal elements
     const clearAllConfirmModal = document.getElementById('clear-all-confirm-modal');
@@ -3039,22 +3055,20 @@
                 del.className = 'delete-btn';
                 del.textContent = '×';
                 del.addEventListener('click', () => {
-                    const indexToRemove = filesToUpload.indexOf(file);
-                    if (indexToRemove > -1) {
-                        filesToUpload.splice(indexToRemove, 1);
-                    }
-                    card.remove();
-                    
-                    // Update upload-area class after removal
-                    setTimeout(() => {
-                        const cards = previewGrid.querySelectorAll('.preview-card');
-                        const uploadArea = document.getElementById('dropzone');
-                        if (cards.length === 1 && uploadArea) {
-                            uploadArea.classList.add('single-image');
-                        } else if (uploadArea) {
-                            uploadArea.classList.remove('single-image');
+                    // Show confirmation modal
+                    const confirmModal = document.getElementById('delete-upload-image-confirm-modal');
+                    if (confirmModal) {
+                        // Generate unique ID for this card if it doesn't have one
+                        if (!card.dataset.cardId) {
+                            card.dataset.cardId = 'card-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
                         }
-                    }, 100);
+                        
+                        // Store references for deletion
+                        confirmModal.dataset.cardId = card.dataset.cardId;
+                        confirmModal.dataset.fileIndex = filesToUpload.indexOf(file).toString();
+                        
+                        confirmModal.classList.remove('is-hidden');
+                    }
                 });
 
                 // Add 1:1 icon and ruler icon for full-size preview
@@ -8370,6 +8384,43 @@
     clearAllConfirmClose.addEventListener('click', hideClearAllConfirmModal);
     clearAllCancelBtn.addEventListener('click', hideClearAllConfirmModal);
     clearAllConfirmBtn.addEventListener('click', confirmClearAll);
+
+    // Delete uploaded image confirmation modal event listeners
+    if (deleteUploadImageCancelBtn) {
+        deleteUploadImageCancelBtn.addEventListener('click', () => {
+            if (deleteUploadImageConfirmModal) {
+                deleteUploadImageConfirmModal.classList.add('is-hidden');
+            }
+        });
+    }
+    if (deleteUploadImageConfirmBtn) {
+        deleteUploadImageConfirmBtn.addEventListener('click', () => {
+            if (deleteUploadImageConfirmModal && deleteUploadImageConfirmModal.dataset.cardId) {
+                // Find the card by its ID
+                const card = previewGrid.querySelector(`[data-card-id="${deleteUploadImageConfirmModal.dataset.cardId}"]`);
+                if (card) {
+                    // Find the file index
+                    const fileIndex = parseInt(deleteUploadImageConfirmModal.dataset.fileIndex);
+                    if (fileIndex >= 0 && fileIndex < filesToUpload.length) {
+                        filesToUpload.splice(fileIndex, 1);
+                    }
+                    card.remove();
+                    
+                    // Update upload-area class after removal
+                    setTimeout(() => {
+                        const cards = previewGrid.querySelectorAll('.preview-card');
+                        const uploadArea = document.getElementById('dropzone');
+                        if (cards.length === 1 && uploadArea) {
+                            uploadArea.classList.add('single-image');
+                        } else if (uploadArea) {
+                            uploadArea.classList.remove('single-image');
+                        }
+                    }, 100);
+                }
+                deleteUploadImageConfirmModal.classList.add('is-hidden');
+            }
+        });
+    }
 
     // Add tag input enter key support
     newTagInput.addEventListener('keydown', (e) => {
