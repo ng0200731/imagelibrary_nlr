@@ -385,6 +385,11 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   overflow: hidden; /* Prevent upload area from scrolling, let preview-grid scroll instead */
 }
 
+/* Disable max-height when there's only one image to prevent scrolling */
+.upload-area.single-image {
+  max-height: none !important;
+}
+
 .upload-area.is-dragover {
     background-color: #eee;
     outline: 1px dashed #000;
@@ -427,6 +432,12 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
     overflow-y: auto; /* Show scrollbar when needed */
     overflow-x: hidden; /* Prevent horizontal scrolling */
     scroll-behavior: smooth; /* Smooth scrolling */
+}
+
+/* Disable scrolling when there's only one image */
+.preview-grid.single-image {
+    overflow-y: hidden !important;
+    max-height: none !important;
 }
 
 /* Custom scrollbar styling for preview-grid */
@@ -606,7 +617,6 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 /* Ensure preview-grid in upload area has proper scrolling */
 #dropzone .preview-grid {
     flex: 1;
-    min-height: 200px;
     width: 100%;
     box-sizing: border-box;
 }
@@ -619,13 +629,12 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
     height: 150px !important;
     box-sizing: border-box !important;
     position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
 #dropzone .preview-card img {
-    position: absolute !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
     max-width: 100% !important;
     max-height: 100% !important;
     width: auto !important;
@@ -633,6 +642,20 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
     object-fit: contain !important;
     object-position: center !important;
     display: block !important;
+    margin: auto !important;
+}
+
+/* Ensure delete button stays in top left corner of the card, not the image */
+#dropzone .preview-card .delete-btn {
+    position: absolute !important;
+    top: 4px !important;
+    left: 4px !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 10 !important;
+    margin: 0 !important;
+    transform: none !important;
+    flex-shrink: 0 !important;
 }
 
 /* Custom scrollbar styling for tag-panel__body */

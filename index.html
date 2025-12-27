@@ -2023,6 +2023,20 @@
             noImagesMessage.innerHTML = '<p>No images to display.</p>';
             libraryGrid.appendChild(noImagesMessage);
         }
+        
+        // Auto-fit when there's only one image - disable scrolling and scroll to top
+        setTimeout(() => {
+            const cards = libraryGrid.querySelectorAll('.library-card');
+            if (cards.length === 1) {
+                // Scroll the grid container to the top
+                libraryGrid.scrollTop = 0;
+                // Add class to disable scrolling
+                libraryGrid.classList.add('single-image');
+            } else {
+                // Remove class to re-enable scrolling
+                libraryGrid.classList.remove('single-image');
+            }
+        }, 100);
 
         // Calculate displayed count for button
         let displayedCount = startIndex + pageImages.length;
@@ -3030,6 +3044,17 @@
                         filesToUpload.splice(indexToRemove, 1);
                     }
                     card.remove();
+                    
+                    // Update upload-area class after removal
+                    setTimeout(() => {
+                        const cards = previewGrid.querySelectorAll('.preview-card');
+                        const uploadArea = document.getElementById('dropzone');
+                        if (cards.length === 1 && uploadArea) {
+                            uploadArea.classList.add('single-image');
+                        } else if (uploadArea) {
+                            uploadArea.classList.remove('single-image');
+                        }
+                    }, 100);
                 });
 
                 // Add 1:1 icon and ruler icon for full-size preview
@@ -3075,6 +3100,17 @@
                 card.appendChild(previewIcon);
                 card.appendChild(rulerIcon);
                 previewGrid.appendChild(card);
+                
+                // Check if there's only one image and adjust upload-area scrolling
+                setTimeout(() => {
+                    const cards = previewGrid.querySelectorAll('.preview-card');
+                    const uploadArea = document.getElementById('dropzone');
+                    if (cards.length === 1 && uploadArea) {
+                        uploadArea.classList.add('single-image');
+                    } else if (uploadArea) {
+                        uploadArea.classList.remove('single-image');
+                    }
+                }, 100);
             };
             reader.readAsDataURL(file);
         }
@@ -3396,6 +3432,15 @@
         currentImageIndex = index;
         imageSources = Array.from(previewGrid.querySelectorAll('img')).map(img => img.src);
         modalImg.src = imageSources[currentImageIndex];
+        
+        // Clear tags for uploaded images (they don't have tags yet)
+        if (lightboxTags) lightboxTags.innerHTML = '';
+        const freqFloating = document.getElementById('lightbox-freq-floating');
+        if (freqFloating) freqFloating.remove();
+        if (lightboxSaveBtn) lightboxSaveBtn.classList.add('is-hidden');
+        pendingAddTags.clear();
+        lightboxDirty = false;
+        
         modal.classList.remove('is-hidden');
         updateArrowVisibility();
     }
@@ -7374,6 +7419,10 @@
         previewGrid.innerHTML = '';
         filesToUpload = [];
         fileInput.value = '';
+        // Remove single-image class when all images are cleared
+        if (dropzone) {
+            dropzone.classList.remove('single-image');
+        }
     });
 
     subjInput.addEventListener('keydown', (e) => {
