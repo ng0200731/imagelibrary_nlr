@@ -4364,10 +4364,13 @@
         const currentSearchTags = getActiveSearchTagTexts();
         const searchMode = tagSearchMode;
         
+        console.log('[FRONTEND] calculateSelectionCount - mode:', searchMode, 'tags:', currentSearchTags);
+        console.log('[FRONTEND] selectedImages:', selectedImages, 'tagSelectedImages:', tagSelectedImages);
+        
         // When tags are active, verify selections match the current mode
         if (currentSearchTags.length > 0) {
             try {
-                // Fetch all images to verify which manually selected images match the current mode
+                // Fetch all images to verify which images match the current mode
                 const sessionToken = localStorage.getItem('sessionToken');
                 const headers = {};
                 if (sessionToken) {
@@ -4378,9 +4381,10 @@
                 
                 const currentTagsLower = currentSearchTags.map(t => t.toLowerCase());
                 let validManualSelections;
+                let validTagSelections;
                 
                 if (searchMode === 'AND') {
-                    // AND mode: filter manually selected images to only include those matching ALL tags
+                    // AND mode: filter both manual and tag-selected images to only include those matching ALL tags
                     validManualSelections = selectedImages.filter(imgId => {
                         const img = allImages.find(i => i.id === imgId);
                         if (!img) return false;
@@ -4395,6 +4399,22 @@
                             );
                         }
                     });
+                    
+                    // Also verify tag-selected images match ALL tags (they should from API, but verify to be safe)
+                    validTagSelections = tagSelectedImages.filter(imgId => {
+                        const img = allImages.find(i => i.id === imgId);
+                        if (!img) return false;
+                        const imageTags = (img.tags || []).map(t => t.toLowerCase());
+                        if (exactWordMode) {
+                            return currentTagsLower.every(tag => imageTags.includes(tag));
+                        } else {
+                            return currentTagsLower.every(tag =>
+                                imageTags.some(imageTag => imageTag.includes(tag))
+                            );
+                        }
+                    });
+                    
+                    console.log('[FRONTEND] AND mode - validManualSelections:', validManualSelections, 'validTagSelections:', validTagSelections);
                 } else {
                     // OR mode: all manually selected images count (no filtering by tags)
                     // But we still verify the images exist
@@ -4402,18 +4422,31 @@
                         const img = allImages.find(i => i.id === imgId);
                         return img !== undefined;
                     });
+                    // OR mode: tag-selected images should already be correct from API, but verify they exist
+                    validTagSelections = tagSelectedImages.filter(imgId => {
+                        const img = allImages.find(i => i.id === imgId);
+                        return img !== undefined;
+                    });
+                    
+                    console.log('[FRONTEND] OR mode - validManualSelections:', validManualSelections, 'validTagSelections:', validTagSelections);
                 }
                 
-                // Combine valid manual selections with tag-selected images
-                return [...new Set([...validManualSelections, ...tagSelectedImages])].length;
+                // Combine valid manual selections with valid tag-selected images
+                const totalCount = [...new Set([...validManualSelections, ...validTagSelections])].length;
+                console.log('[FRONTEND] calculateSelectionCount result:', totalCount);
+                return totalCount;
             } catch (error) {
                 console.error('Error fetching images for selection count:', error);
                 // Fallback to simple count if fetch fails
-                return [...new Set([...selectedImages, ...tagSelectedImages])].length;
+                const fallbackCount = [...new Set([...selectedImages, ...tagSelectedImages])].length;
+                console.log('[FRONTEND] calculateSelectionCount fallback result:', fallbackCount);
+                return fallbackCount;
             }
         } else {
             // No active tags: combine all selections (no filtering needed)
-            return [...new Set([...selectedImages, ...tagSelectedImages])].length;
+            const noTagCount = [...new Set([...selectedImages, ...tagSelectedImages])].length;
+            console.log('[FRONTEND] calculateSelectionCount (no tags) result:', noTagCount);
+            return noTagCount;
         }
     }
 
@@ -4794,19 +4827,22 @@
         }
     }
 
-    function showProjectNameModal() {
-        console.log('Selected images before modal:', selectedImages);
-        console.log('Tag-selected images before modal:', tagSelectedImages);
+    async function showProjectNameModal() {
+        console.log('[FRONTEND] showProjectNameModal called');
+        console.log('[FRONTEND] Selected images before modal:', selectedImages);
+        console.log('[FRONTEND] Tag-selected images before modal:', tagSelectedImages);
 
-        // Safety check: Don't execute if no selections (check both manual and tag selections)
-        const totalSelections = selectedImages.length + tagSelectedImages.length;
+        // Use calculateSelectionCount to get accurate count considering AND/OR mode
+        const totalSelections = await calculateSelectionCount();
+        console.log('[FRONTEND] Total selections calculated:', totalSelections);
+        
         if (totalSelections === 0) {
-            console.warn('showProjectNameModal called but no images are selected');
-            alert('Please select at least one image.');
+            console.warn('[FRONTEND] showProjectNameModal called but no images are selected');
+            alert('Please select at least one image before creating a project.');
             return;
         }
 
-        console.log(`Total selections for project: ${totalSelections} (${selectedImages.length} manual + ${tagSelectedImages.length} tag-based)`);
+        console.log(`[FRONTEND] Total selections for project: ${totalSelections} (${selectedImages.length} manual + ${tagSelectedImages.length} tag-based)`);
 
         projectNameInput.value = '';
         projectNameModal.classList.remove('is-hidden');
@@ -5537,63 +5573,89 @@
         const currentSearchTags = searchTags.map(tag => tag.text);
         const searchMode = tagSearchMode;
         
-        // Combine both manual and tag-based selections, respecting AND/OR mode
-        let tagImagesToInclude;
-        if (searchMode === 'AND' && currentSearchTags.length > 0) {
-            // AND mode: Fetch fresh matching images from API (only images with ALL tags)
+        console.log('[FRONTEND] createProject - mode:', searchMode, 'tags:', currentSearchTags);
+        console.log('[FRONTEND] createProject - selectedImages:', selectedImages, 'tagSelectedImages:', tagSelectedImages);
+        
+        // Use the same validation logic as calculateSelectionCount to ensure consistency
+        let allSelectedImages;
+        if (currentSearchTags.length > 0) {
             try {
+                // Fetch all images to verify which images match the current mode
                 const sessionToken = localStorage.getItem('sessionToken');
                 const headers = {};
                 if (sessionToken) {
                     headers['Authorization'] = `Bearer ${sessionToken}`;
                 }
-                const tagResponse = await fetch(`${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}`, {
-                    headers: headers
-                });
-                if (tagResponse.ok) {
-                    const tagMatchingImages = await tagResponse.json();
-                    const newTagSelectedImages = tagMatchingImages.map(img => img.id);
-                    // Include manually selected images only if they also match ALL tags
-                    const currentTagsLower = currentSearchTags.map(t => t.toLowerCase());
-                    // Get all images to check manual selections
-                    const allImagesResponse = await fetch(`${API_URL}/images`, { headers });
-                    const allImages = allImagesResponse.ok ? await allImagesResponse.json() : [];
-                    const manuallySelectedMatchingAll = selectedImages.filter(imgId => {
+                const allImagesResponse = await fetch(`${API_URL}/images`, { headers });
+                const allImages = allImagesResponse.ok ? await allImagesResponse.json() : [];
+                
+                const currentTagsLower = currentSearchTags.map(t => t.toLowerCase());
+                let validManualSelections;
+                let validTagSelections;
+                
+                if (searchMode === 'AND') {
+                    // AND mode: filter both manual and tag-selected images to only include those matching ALL tags
+                    validManualSelections = selectedImages.filter(imgId => {
                         const img = allImages.find(i => i.id === imgId);
                         if (!img) return false;
                         const imageTags = (img.tags || []).map(t => t.toLowerCase());
-                        return currentTagsLower.every(tag => imageTags.includes(tag));
+                        if (exactWordMode) {
+                            // Exact word mode: each search tag must be present exactly
+                            return currentTagsLower.every(tag => imageTags.includes(tag));
+                        } else {
+                            // Partial mode: each search tag must match at least one image tag as a substring
+                            return currentTagsLower.every(tag =>
+                                imageTags.some(imageTag => imageTag.includes(tag))
+                            );
+                        }
                     });
-                    tagImagesToInclude = [...new Set([...manuallySelectedMatchingAll, ...newTagSelectedImages])];
-                    console.log('AND mode - fetched', newTagSelectedImages.length, 'matching images from API');
+                    
+                    // Also verify tag-selected images match ALL tags
+                    validTagSelections = tagSelectedImages.filter(imgId => {
+                        const img = allImages.find(i => i.id === imgId);
+                        if (!img) return false;
+                        const imageTags = (img.tags || []).map(t => t.toLowerCase());
+                        if (exactWordMode) {
+                            return currentTagsLower.every(tag => imageTags.includes(tag));
+                        } else {
+                            return currentTagsLower.every(tag =>
+                                imageTags.some(imageTag => imageTag.includes(tag))
+                            );
+                        }
+                    });
+                    
+                    console.log('[FRONTEND] createProject AND mode - validManualSelections:', validManualSelections, 'validTagSelections:', validTagSelections);
+                    allSelectedImages = [...new Set([...validManualSelections, ...validTagSelections])];
                 } else {
-                    // Fallback: use all tagSelectedImages if API fails
-                    tagImagesToInclude = tagSelectedImages;
+                    // OR mode: all manually selected images count (no filtering by tags)
+                    // But we still verify the images exist
+                    validManualSelections = selectedImages.filter(imgId => {
+                        const img = allImages.find(i => i.id === imgId);
+                        return img !== undefined;
+                    });
+                    // OR mode: tag-selected images should already be correct from API, but verify they exist
+                    validTagSelections = tagSelectedImages.filter(imgId => {
+                        const img = allImages.find(i => i.id === imgId);
+                        return img !== undefined;
+                    });
+                    
+                    console.log('[FRONTEND] createProject OR mode - validManualSelections:', validManualSelections, 'validTagSelections:', validTagSelections);
+                    allSelectedImages = [...new Set([...validManualSelections, ...validTagSelections])];
                 }
             } catch (error) {
-                console.error('Error fetching AND mode images:', error);
-                // Fallback: use all tagSelectedImages if API fails
-                tagImagesToInclude = tagSelectedImages;
+                console.error('[FRONTEND] Error fetching images for createProject:', error);
+                // Fallback to simple combination if fetch fails
+                allSelectedImages = [...new Set([...selectedImages, ...tagSelectedImages])];
             }
         } else {
-            // OR mode: Include all tag-selected images
-            tagImagesToInclude = tagSelectedImages;
-        }
-        
-        // Combine selections based on mode
-        let allSelectedImages;
-        if (searchMode === 'AND' && currentSearchTags.length > 0) {
-            // AND mode: tagImagesToInclude already contains filtered manual + tag selections
-            allSelectedImages = tagImagesToInclude;
-        } else {
-            // OR mode: Combine manual and tag selections
-            allSelectedImages = [...new Set([...selectedImages, ...tagImagesToInclude])];
+            // No active tags: combine all selections (no filtering needed)
+            allSelectedImages = [...new Set([...selectedImages, ...tagSelectedImages])];
         }
 
-        console.log('Creating project - searchMode:', searchMode, 'currentSearchTags:', currentSearchTags);
-        console.log('Creating project with selected images:', selectedImages);
-        console.log('Creating project with tag-selected images (filtered):', tagImagesToInclude);
-        console.log('Creating project with combined images:', allSelectedImages);
+        console.log('[FRONTEND] Creating project - searchMode:', searchMode, 'currentSearchTags:', currentSearchTags);
+        console.log('[FRONTEND] Creating project with selected images:', selectedImages);
+        console.log('[FRONTEND] Creating project with tag-selected images:', tagSelectedImages);
+        console.log('[FRONTEND] Creating project with combined images:', allSelectedImages);
 
         if (!projectName) {
             alert('Please enter a project name.');
@@ -9026,4 +9088,5 @@
   </script>
 </body>
 </html>
+
 
