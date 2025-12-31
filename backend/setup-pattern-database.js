@@ -6,6 +6,7 @@ function setupPatternDatabase() {
         CREATE TABLE IF NOT EXISTS patterns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filepath TEXT NOT NULL UNIQUE,
+            name TEXT,
             ownership TEXT DEFAULT 'eric.brilliant@gmail.com',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );

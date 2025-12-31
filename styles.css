@@ -375,6 +375,48 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   gap: 8px;
 }
 
+/* Pattern Thumbnails Grid - Right Panel */
+.pattern-thumbnails-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  padding: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.pattern-thumbnail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  border: 1px solid #ddd;
+  padding: 8px;
+  border-radius: 4px;
+  transition: border-color 0.2s ease;
+}
+
+.pattern-thumbnail-item:hover {
+  border-color: #000;
+}
+
+.pattern-thumbnail-image {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  margin-bottom: 8px;
+}
+
+.pattern-thumbnail-name {
+  font-size: 11px;
+  text-align: center;
+  word-break: break-word;
+  color: #000;
+  max-width: 100%;
+}
+
 .pattern-name-input-wrapper {
   display: flex;
   flex-direction: column;

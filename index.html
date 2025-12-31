@@ -265,10 +265,11 @@
                 </div>
               </section>
             </div>
-            <!-- Right Half: Future Content -->
+            <!-- Right Half: Pattern Thumbnails -->
             <div class="pattern-upload-right">
               <section class="panel">
-                <!-- Right panel content will be added here later -->
+                <h2 class="panel__title">Uploaded Patterns</h2>
+                <div id="pattern-thumbnails-grid" class="pattern-thumbnails-grid"></div>
               </section>
             </div>
           </div>
@@ -405,6 +406,26 @@
           <p>Please fill in at least one dimension field (width or length) before uploading.</p>
           <div class="modal-buttons">
             <button id="ok-dimension-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning Dialog for Pattern Upload - No Images -->
+      <div id="pattern-no-images-warning-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Please select at least one pattern file to upload.</p>
+          <div class="modal-buttons">
+            <button id="ok-pattern-no-images-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning Dialog for Pattern Upload - No Name -->
+      <div id="pattern-no-name-warning-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Please enter a pattern name before uploading.</p>
+          <div class="modal-buttons">
+            <button id="ok-pattern-no-name-btn" class="button is-primary">OK</button>
           </div>
         </div>
       </div>
@@ -3087,7 +3108,8 @@
         } else if (pageName === 'upload') {
             fetchSubjFrequencies();
         } else if (pageName === 'upload-pattern') {
-            // Initialize pattern upload page if needed
+            // Load pattern thumbnails when page is shown
+            loadPatternThumbnails();
         }
     }
 
@@ -8049,6 +8071,13 @@
                 if (objWidthInput) {
                     objWidthInput.focus();
                 }
+            } else if (patternNoImagesWarningModal && !patternNoImagesWarningModal.classList.contains('is-hidden')) {
+                patternNoImagesWarningModal.classList.add('is-hidden');
+            } else if (patternNoNameWarningModal && !patternNoNameWarningModal.classList.contains('is-hidden')) {
+                patternNoNameWarningModal.classList.add('is-hidden');
+                if (patternNameInput) {
+                    patternNameInput.focus();
+                }
             }
         }
     });
@@ -8126,6 +8155,259 @@
                 objWidthInput.focus();
             }
         });
+    }
+
+    // ===== Pattern Upload Functionality =====
+    const patternFileInput = document.getElementById('pattern-file-input');
+    const patternPreviewGrid = document.getElementById('pattern-preview-grid');
+    const patternClearAllButton = document.getElementById('pattern-clear-all');
+    const patternDropzone = document.getElementById('pattern-dropzone');
+    const patternUploadButton = document.getElementById('pattern-upload-button');
+    const patternNameInput = document.getElementById('pattern-name-input');
+    const patternNoImagesWarningModal = document.getElementById('pattern-no-images-warning-modal');
+    const patternNoNameWarningModal = document.getElementById('pattern-no-name-warning-modal');
+    const okPatternNoImagesBtn = document.getElementById('ok-pattern-no-images-btn');
+    const okPatternNoNameBtn = document.getElementById('ok-pattern-no-name-btn');
+    let patternFilesToUpload = [];
+
+    function handlePatternFiles(files) {
+        for (const file of files) {
+            // Accept any file type for patterns
+            patternFilesToUpload.push(file);
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const card = document.createElement('div');
+                card.className = 'preview-card';
+                card.dataset.fileName = file.name;
+
+                // Check if it's an image to preview, otherwise show file icon
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
+                    card.appendChild(img);
+                } else {
+                    const fileIcon = document.createElement('div');
+                    fileIcon.innerHTML = '📄';
+                    fileIcon.style.cssText = 'font-size: 48px; text-align: center; padding: 20px;';
+                    const fileName = document.createElement('div');
+                    fileName.textContent = file.name;
+                    fileName.style.cssText = 'text-align: center; margin-top: 10px; font-size: 12px; word-break: break-all; padding: 0 8px;';
+                    card.appendChild(fileIcon);
+                    card.appendChild(fileName);
+                }
+
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'delete-btn';
+                del.textContent = '×';
+                del.addEventListener('click', () => {
+                    const index = patternFilesToUpload.indexOf(file);
+                    if (index > -1) {
+                        patternFilesToUpload.splice(index, 1);
+                    }
+                    card.remove();
+                });
+
+                card.appendChild(del);
+                if (patternPreviewGrid) patternPreviewGrid.appendChild(card);
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    if (patternFileInput) {
+        patternFileInput.addEventListener('change', (event) => {
+            handlePatternFiles(event.target.files);
+        });
+    }
+
+    if (patternClearAllButton) {
+        patternClearAllButton.addEventListener('click', () => {
+            if (patternPreviewGrid) patternPreviewGrid.innerHTML = '';
+            patternFilesToUpload = [];
+            if (patternFileInput) patternFileInput.value = '';
+        });
+    }
+
+    if (patternDropzone) {
+        patternDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            patternDropzone.classList.add('dragover');
+        });
+
+        patternDropzone.addEventListener('dragleave', () => {
+            patternDropzone.classList.remove('dragover');
+        });
+
+        patternDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            patternDropzone.classList.remove('dragover');
+            handlePatternFiles(e.dataTransfer.files);
+        });
+
+        // Paste support
+        document.addEventListener('paste', (e) => {
+            // Only handle paste when on pattern upload page
+            const patternPage = document.getElementById('page-upload-pattern');
+            if (patternPage && !patternPage.classList.contains('is-hidden')) {
+                if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+                    handlePatternFiles(e.clipboardData.files);
+                }
+            }
+        });
+    }
+
+    // Handle OK button for pattern no images warning modal
+    if (okPatternNoImagesBtn && patternNoImagesWarningModal) {
+        okPatternNoImagesBtn.addEventListener('click', () => {
+            patternNoImagesWarningModal.classList.add('is-hidden');
+        });
+    }
+
+    // Handle OK button for pattern no name warning modal
+    if (okPatternNoNameBtn && patternNoNameWarningModal) {
+        okPatternNoNameBtn.addEventListener('click', () => {
+            patternNoNameWarningModal.classList.add('is-hidden');
+            // Focus on pattern name input
+            if (patternNameInput) {
+                patternNameInput.focus();
+            }
+        });
+    }
+
+    if (patternUploadButton) {
+        patternUploadButton.addEventListener('click', async () => {
+            // Validate files
+            if (patternFilesToUpload.length === 0) {
+                if (patternNoImagesWarningModal) {
+                    patternNoImagesWarningModal.classList.remove('is-hidden');
+                }
+                return;
+            }
+
+            // Validate pattern name
+            const patternName = patternNameInput ? patternNameInput.value.trim() : '';
+            if (!patternName) {
+                if (patternNoNameWarningModal) {
+                    patternNoNameWarningModal.classList.remove('is-hidden');
+                }
+                return;
+            }
+
+            const formData = new FormData();
+            patternFilesToUpload.forEach(file => {
+                formData.append('patterns', file);
+            });
+            formData.append('tags', JSON.stringify([]));
+            formData.append('patternName', patternName);
+
+            patternUploadButton.disabled = true;
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) loadingOverlay.classList.remove('is-hidden');
+            try {
+                const sessionToken = localStorage.getItem('sessionToken');
+                const headers = {};
+                if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+                const uploadUrl = `${API_URL}/api/patterns/upload`;
+                console.log('[Pattern Upload] API_URL:', API_URL);
+                console.log('[Pattern Upload] Upload URL:', uploadUrl);
+                console.log('[Pattern Upload] Files to upload:', patternFilesToUpload.length);
+                const response = await fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+                if (loadingOverlay) loadingOverlay.classList.add('is-hidden');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Upload failed: ${errorText}`);
+                }
+                const result = await response.json();
+                
+                // Clear left screen after upload
+                if (patternPreviewGrid) patternPreviewGrid.innerHTML = '';
+                patternFilesToUpload = [];
+                if (patternFileInput) patternFileInput.value = '';
+                if (patternNameInput) patternNameInput.value = '';
+                
+                // Refresh right screen to show uploaded patterns
+                await loadPatternThumbnails();
+                
+                alert(`Successfully uploaded ${result.count} pattern file(s)!`);
+                patternUploadButton.disabled = false;
+            } catch (error) {
+                console.error('Error uploading patterns:', error);
+                alert(`An error occurred during pattern upload. Please try again. Details: ${error.message}`);
+                if (loadingOverlay) loadingOverlay.classList.add('is-hidden');
+                patternUploadButton.disabled = false;
+            }
+        });
+    }
+
+    // Function to load and display pattern thumbnails in right panel
+    async function loadPatternThumbnails() {
+        const patternThumbnailsGrid = document.getElementById('pattern-thumbnails-grid');
+        if (!patternThumbnailsGrid) return;
+
+        try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {};
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+
+            const response = await fetch(`${API_URL}/api/patterns`, {
+                method: 'GET',
+                headers: headers
+            });
+
+            if (!response.ok) {
+                console.error('Failed to load patterns:', response.status);
+                patternThumbnailsGrid.innerHTML = '<p class="text">Failed to load patterns.</p>';
+                return;
+            }
+
+            const patterns = await response.json();
+            patternThumbnailsGrid.innerHTML = '';
+
+            if (patterns.length === 0) {
+                patternThumbnailsGrid.innerHTML = '<p class="text">No patterns uploaded yet.</p>';
+                return;
+            }
+
+            patterns.forEach(pattern => {
+                const thumbnailItem = document.createElement('div');
+                thumbnailItem.className = 'pattern-thumbnail-item';
+                
+                const img = document.createElement('img');
+                img.className = 'pattern-thumbnail-image';
+                // Extract filename from filepath
+                const filename = pattern.filepath.split(/[/\\]/).pop();
+                img.src = `${API_URL}/uploads/patterns/${filename}`;
+                img.alt = pattern.name || 'Pattern';
+                img.onerror = function() {
+                    // If image fails to load, show file icon
+                    this.style.display = 'none';
+                    const fileIcon = document.createElement('div');
+                    fileIcon.innerHTML = '📄';
+                    fileIcon.style.cssText = 'font-size: 32px; text-align: center; padding: 20px; width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: #f5f5f5;';
+                    thumbnailItem.insertBefore(fileIcon, thumbnailItem.firstChild);
+                };
+                
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'pattern-thumbnail-name';
+                nameDiv.textContent = pattern.name || 'Unnamed Pattern';
+                
+                thumbnailItem.appendChild(img);
+                thumbnailItem.appendChild(nameDiv);
+                patternThumbnailsGrid.appendChild(thumbnailItem);
+            });
+        } catch (error) {
+            console.error('Error loading pattern thumbnails:', error);
+            patternThumbnailsGrid.innerHTML = '<p class="text">Error loading patterns.</p>';
+        }
     }
 
     // Handle OK button for feelings warning modal

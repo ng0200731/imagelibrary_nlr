@@ -50,6 +50,7 @@ try {
         CREATE TABLE IF NOT EXISTS patterns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filepath TEXT NOT NULL UNIQUE,
+            name TEXT,
             ownership TEXT DEFAULT 'eric.brilliant@gmail.com',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -65,6 +66,17 @@ try {
             PRIMARY KEY (pattern_id, tag_id)
         );
     `);
+    
+    // Check if name column exists, add it if missing
+    const patternTableInfo = patternDb.prepare("PRAGMA table_info(patterns)").all();
+    const hasName = patternTableInfo.some(col => col.name === 'name');
+    
+    if (!hasName) {
+        console.log('Adding name column to patterns table...');
+        patternDb.exec('ALTER TABLE patterns ADD COLUMN name TEXT');
+        console.log('✅ name column added to patterns table');
+    }
+    
     console.log('✅ Pattern database schema verified');
 } catch (err) {
     console.error('Error setting up pattern database schema:', err);
@@ -448,15 +460,15 @@ app.post('/api/patterns/upload', patternUpload.array('patterns'), (req, res) => 
 
     // Prepare statements for pattern database
     const insertPattern = patternDb.prepare(`
-        INSERT INTO patterns (filepath, ownership, created_at)
-        VALUES (?, ?, datetime('now'))
+        INSERT INTO patterns (filepath, name, ownership, created_at)
+        VALUES (?, ?, ?, datetime('now'))
     `);
     const insertPatternTag = patternDb.prepare('INSERT OR IGNORE INTO pattern_tags (name) VALUES (?)');
     const getPatternTagId = patternDb.prepare('SELECT id FROM pattern_tags WHERE name = ?');
     const linkPatternToTag = patternDb.prepare('INSERT INTO pattern_tag_links (pattern_id, tag_id) VALUES (?, ?)');
 
     // Create transaction function for pattern upload
-    const patternUploadTransaction = patternDb.transaction((files, tags) => {
+    const patternUploadTransaction = patternDb.transaction((files, tags, patternName) => {
         for (const file of files) {
             let patternResult;
             let filePath = file.path;
@@ -468,7 +480,7 @@ app.post('/api/patterns/upload', patternUpload.array('patterns'), (req, res) => 
             while (attempts < maxAttempts) {
                 try {
                     console.log(`Attempt ${attempts + 1}: Inserting ${filePath} into pattern database`);
-                    patternResult = insertPattern.run(filePath, userEmail);
+                    patternResult = insertPattern.run(filePath, patternName, userEmail);
                     break; // Success, exit the retry loop
                 } catch (err) {
                     console.log('Pattern database insert error:', err.code, err.message);
@@ -509,12 +521,15 @@ app.post('/api/patterns/upload', patternUpload.array('patterns'), (req, res) => 
     });
 
     try {
+        const patternName = req.body.patternName || '';
+        
         console.log('=== Pattern Upload Debug Info ===');
         console.log('Files:', files.length);
         console.log('Tags:', tags);
+        console.log('Pattern Name:', patternName);
 
         // Execute the transaction
-        patternUploadTransaction(files, tags);
+        patternUploadTransaction(files, tags, patternName);
 
         console.log('Pattern upload successful:', {
             files: files.length,
@@ -531,6 +546,33 @@ app.post('/api/patterns/upload', patternUpload.array('patterns'), (req, res) => 
         console.error('Error details:', err);
         console.error('Stack trace:', err.stack);
         res.status(500).send(`An error occurred during pattern upload: ${err.message}`);
+    }
+});
+
+// 1a-1. Get All Patterns
+app.get('/api/patterns', (req, res) => {
+    try {
+        // Get user from session for filtering
+        const user = getUserFromSession(req);
+        if (!user) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        const userLevel = parseInt(user.level) || 1;
+        let patterns;
+
+        // Level 3 can see all patterns, level 1 can only see their own
+        if (userLevel === 3) {
+            patterns = patternDb.prepare('SELECT * FROM patterns ORDER BY created_at DESC').all();
+        } else {
+            // Case-insensitive ownership check
+            patterns = patternDb.prepare('SELECT * FROM patterns WHERE LOWER(ownership) = ? ORDER BY created_at DESC').all(user.email.toLowerCase());
+        }
+
+        res.json(patterns);
+    } catch (err) {
+        console.error('Error fetching patterns:', err.message);
+        res.status(500).send('Error fetching patterns');
     }
 });
 
