@@ -4442,6 +4442,19 @@
             patternDropdownToggle.style.opacity = '0.7';
             patternDropdownToggle.style.cursor = 'not-allowed';
         }
+
+        // Ensure tag chips and remove buttons remain clickable (remove buttons will check lock state in handler)
+        const tagChips = document.querySelectorAll('.lightbox-tag-chip');
+        tagChips.forEach(chip => {
+            // Ensure chip doesn't block pointer events to its children (remove buttons)
+            chip.style.pointerEvents = 'auto';
+        });
+        
+        const tagRemoveButtons = document.querySelectorAll('.lightbox-tag-remove');
+        tagRemoveButtons.forEach(btn => {
+            btn.style.pointerEvents = 'auto';
+            btn.style.cursor = 'pointer';
+        });
     }
 
     // Unlock all lightbox fields
@@ -5103,8 +5116,16 @@
             removeBtn.title = 'Remove this tag from the image';
             removeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                // Check if locked - tag removal should still work, but show message if locked
+                if (lightboxLocked) {
+                    showLightboxToast('Fields are locked. Click the lock icon to unlock.');
+                    return;
+                }
                 handleRemoveTagFromImage(currentImage.id, tagText);
             });
+            // Ensure remove button is always clickable (even when parent might be locked)
+            removeBtn.style.pointerEvents = 'auto';
+            removeBtn.style.cursor = 'pointer';
             chip.appendChild(removeBtn);
 
                 tagList.appendChild(chip);
