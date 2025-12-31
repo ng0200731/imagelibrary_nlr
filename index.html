@@ -240,23 +240,34 @@
               <div id="user-email-display-upload-pattern" class="user-email-display"></div>
             </div>
           </header>
-          <section class="panel">
-            <div id="pattern-dropzone" class="upload-area">
-              <div class="preview-header">
-                <h2 class="panel__title">Selected Patterns</h2>
-                <div class="upload-actions">
-                  <input type="file" id="pattern-file-input" class="file-input" multiple />
-                  <label for="pattern-file-input" class="button">Browse Files</label>
-                  <button id="pattern-clear-all" class="button" type="button">Clear All</button>
+          <div class="pattern-upload-container">
+            <!-- Left Half: Upload Section -->
+            <div class="pattern-upload-left">
+              <section class="panel">
+                <div id="pattern-dropzone" class="upload-area">
+                  <div class="preview-header">
+                    <h2 class="panel__title">Selected Patterns</h2>
+                    <div class="upload-actions">
+                      <input type="file" id="pattern-file-input" class="file-input" multiple />
+                      <label for="pattern-file-input" class="button">Browse Files</label>
+                      <button id="pattern-clear-all" class="button" type="button">Clear All</button>
+                    </div>
+                  </div>
+                  <p class="text">Browse, drag & drop, or paste pattern files</p>
+                  <div id="pattern-preview-grid" class="preview-grid"></div>
                 </div>
-              </div>
-              <p class="text">Browse, drag & drop, or paste pattern files</p>
-              <div id="pattern-preview-grid" class="preview-grid"></div>
+                <div class="upload-actions">
+                    <button id="pattern-upload-button" class="button button--primary" type="button">Upload</button>
+                </div>
+              </section>
             </div>
-            <div class="upload-actions">
-                <button id="pattern-upload-button" class="button button--primary" type="button">Upload</button>
+            <!-- Right Half: Future Content -->
+            <div class="pattern-upload-right">
+              <section class="panel">
+                <!-- Right panel content will be added here later -->
+              </section>
             </div>
-          </section>
+          </div>
       </div>
 
       <!-- Project Page -->

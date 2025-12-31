@@ -297,6 +297,81 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   margin-top: 8px; /* Add spacing from upload section */
 }
 
+/* Pattern Upload Page - Split Layout */
+#page-upload-pattern {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pattern-upload-container {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pattern-upload-left {
+  width: 50%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #ddd;
+  overflow: hidden;
+}
+
+.pattern-upload-right {
+  width: 50%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pattern-upload-left .panel,
+.pattern-upload-right .panel {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Make pattern dropzone fill the left panel */
+.pattern-upload-left .panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+#pattern-dropzone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: none !important;
+  margin-bottom: 0;
+  border: none;
+  padding: 8px;
+  height: 100%;
+}
+
+#pattern-preview-grid {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.pattern-upload-left .upload-actions {
+  flex-shrink: 0;
+  padding: 8px;
+  border-top: 1px solid #ddd;
+}
+
 .panel__title {
   margin: 0 0 4px 0;
   font-size: 13px; /* Reduced */
