@@ -40,6 +40,36 @@ app.get('/', (req, res) => {
 const db = new Database('database.sqlite');
 console.log('Connected to the better-sqlite3 database.');
 
+// --- Pattern Database Connection (Separate) ---
+const patternDb = new Database('pattern_database.sqlite');
+console.log('Connected to the pattern database.');
+
+// Initialize pattern database tables if they don't exist
+try {
+    patternDb.exec(`
+        CREATE TABLE IF NOT EXISTS patterns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filepath TEXT NOT NULL UNIQUE,
+            ownership TEXT DEFAULT 'eric.brilliant@gmail.com',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS pattern_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS pattern_tag_links (
+            pattern_id INTEGER,
+            tag_id INTEGER,
+            FOREIGN KEY (pattern_id) REFERENCES patterns (id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES pattern_tags (id) ON DELETE CASCADE,
+            PRIMARY KEY (pattern_id, tag_id)
+        );
+    `);
+    console.log('✅ Pattern database schema verified');
+} catch (err) {
+    console.error('Error setting up pattern database schema:', err);
+}
+
 // Verify schema has width, length, and ownership columns, add them if missing
 try {
     const tableInfo = db.prepare("PRAGMA table_info(images)").all();
@@ -103,11 +133,24 @@ try {
 // --- File Upload Setup ---
 const uploadDir = './uploads';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+
+// Pattern upload directory (separate from images)
+const patternUploadDir = './uploads/patterns';
+if (!fs.existsSync(patternUploadDir)) fs.mkdirSync(patternUploadDir, { recursive: true });
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
     filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
 });
+
+// Pattern storage (separate directory)
+const patternStorage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, patternUploadDir),
+    filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+});
+
 const upload = multer({ storage: storage });
+const patternUpload = multer({ storage: patternStorage });
 
 // --- Helper Functions ---
 
@@ -385,6 +428,109 @@ app.post('/upload', upload.array('images'), (req, res) => {
         console.error('Error details:', err);
         console.error('Stack trace:', err.stack);
         res.status(500).send(`An error occurred during upload: ${err.message}`);
+    }
+});
+
+// 1a. Upload Patterns (Separate from Images)
+app.post('/api/patterns/upload', patternUpload.array('patterns'), (req, res) => {
+    const tags = req.body.tags ? JSON.parse(req.body.tags) : [];
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+        return res.status(400).send('No files uploaded.');
+    }
+
+    // Get user email from session for ownership
+    const userEmail = getUserEmailFromSession(req);
+    if (!userEmail) {
+        return res.status(401).send('Authentication required');
+    }
+
+    // Prepare statements for pattern database
+    const insertPattern = patternDb.prepare(`
+        INSERT INTO patterns (filepath, ownership, created_at)
+        VALUES (?, ?, datetime('now'))
+    `);
+    const insertPatternTag = patternDb.prepare('INSERT OR IGNORE INTO pattern_tags (name) VALUES (?)');
+    const getPatternTagId = patternDb.prepare('SELECT id FROM pattern_tags WHERE name = ?');
+    const linkPatternToTag = patternDb.prepare('INSERT INTO pattern_tag_links (pattern_id, tag_id) VALUES (?, ?)');
+
+    // Create transaction function for pattern upload
+    const patternUploadTransaction = patternDb.transaction((files, tags) => {
+        for (const file of files) {
+            let patternResult;
+            let filePath = file.path;
+            let attempts = 0;
+            const maxAttempts = 10;
+
+            // Handle UNIQUE constraint on filepath by generating new filename if needed
+            console.log(`Processing pattern file: ${file.originalname}, path: ${filePath}`);
+            while (attempts < maxAttempts) {
+                try {
+                    console.log(`Attempt ${attempts + 1}: Inserting ${filePath} into pattern database`);
+                    patternResult = insertPattern.run(filePath, userEmail);
+                    break; // Success, exit the retry loop
+                } catch (err) {
+                    console.log('Pattern database insert error:', err.code, err.message);
+                    if ((err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.message.includes('UNIQUE constraint failed')) && attempts < maxAttempts - 1) {
+                        // Generate a new unique filename
+                        attempts++;
+                        const timestamp = Date.now() + attempts;
+                        const ext = path.extname(file.originalname);
+                        const newFilename = timestamp + ext;
+                        const newFilePath = path.join(patternUploadDir, newFilename);
+
+                        // Rename the physical file
+                        fs.renameSync(file.path, newFilePath);
+                        filePath = newFilePath;
+
+                        console.log(`Pattern filepath conflict resolved. Renamed to: ${newFilePath}`);
+                    } else {
+                        throw err; // Re-throw if not a UNIQUE constraint error or max attempts reached
+                    }
+                }
+            }
+            const patternId = patternResult.lastInsertRowid;
+
+            // Link tags to pattern
+            if (tags && tags.length > 0) {
+                for (const tag of tags) {
+                    const normalizedTag = String(tag).trim();
+                    if (normalizedTag.length > 0) {
+                        insertPatternTag.run(normalizedTag);
+                        const tagRow = getPatternTagId.get(normalizedTag);
+                        if (tagRow) {
+                            linkPatternToTag.run(patternId, tagRow.id);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    try {
+        console.log('=== Pattern Upload Debug Info ===');
+        console.log('Files:', files.length);
+        console.log('Tags:', tags);
+
+        // Execute the transaction
+        patternUploadTransaction(files, tags);
+
+        console.log('Pattern upload successful:', {
+            files: files.length,
+            tags: tags.length
+        });
+
+        res.status(200).send({
+            message: 'Pattern files uploaded successfully',
+            count: files.length,
+            tags: tags.length
+        });
+    } catch (err) {
+        console.error('=== Pattern Upload Error ===');
+        console.error('Error details:', err);
+        console.error('Stack trace:', err.stack);
+        res.status(500).send(`An error occurred during pattern upload: ${err.message}`);
     }
 });
 

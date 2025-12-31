@@ -150,11 +150,16 @@ body {
   font-size: 11px; /* Reduced */
 }
 
-.button:hover,
-.button:focus {
+.button:hover {
   outline: none;
   background: #000;
   color: #fff;
+}
+
+/* Do NOT change background/text color on focus globally to avoid false "active" look */
+.button:focus {
+  outline: 1px dotted #000;
+  outline-offset: 1px;
 }
 
 .page.is-hidden {
@@ -1306,8 +1311,8 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   padding: 8px 12px;
   font-size: 12px;
   white-space: nowrap;
-  background: #fff;
-  color: #000;
+  background: #fff !important; /* Default: white background */
+  color: #000 !important;      /* Default: black text */
   border: 1px solid #000;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1315,11 +1320,37 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   min-width: 50px;
 }
 
-.tag-mode-toggle-btn:hover,
-.tag-mode-toggle-btn:focus {
-  background: #000;
-  color: #fff;
-  outline: none;
+/* Non-active state - explicitly white background, black text (even when focused) */
+.tag-mode-toggle-btn:not(.is-active) {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+/* Override global button focus for non-active OR/AND button so it doesn't appear "pressed" on page load */
+.tag-mode-toggle-btn:not(.is-active):focus {
+  background: #fff !important;
+  color: #000 !important;
+  outline: 1px dotted #000;
+  outline-offset: 1px;
+}
+
+/* Hover state for non-active button (only on hover, not focus) */
+.tag-mode-toggle-btn:not(.is-active):hover {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Active state - black background, white text (reserved if JS ever applies .is-active) */
+.tag-mode-toggle-btn.is-active {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Ensure active state persists even on hover and focus */
+.tag-mode-toggle-btn.is-active:hover,
+.tag-mode-toggle-btn.is-active:focus {
+  background: #000 !important;
+  color: #fff !important;
 }
 
 /* Exact word toggle should visually match the OR/AND tag-mode toggle */

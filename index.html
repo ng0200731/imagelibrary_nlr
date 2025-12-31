@@ -20,6 +20,7 @@
       <nav class="menu">
         <a id="nav-library" class="menu__item is-active" href="#">Image Library</a>
         <a id="nav-upload" class="menu__item" href="#">Upload Image</a>
+        <a id="nav-upload-pattern" class="menu__item" href="#">Upload Pattern</a>
         <a id="nav-project" class="menu__item" href="#">Project</a>
         <a id="nav-tags" class="menu__item is-hidden" href="#">Tags</a>
         <a id="nav-admin" class="menu__item is-hidden" href="#">Admin Panel</a>
@@ -225,6 +226,35 @@
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+      </div>
+
+      <!-- Upload Pattern Page -->
+      <div id="page-upload-pattern" class="page is-hidden">
+          <header class="content__header">
+            <div class="header-content-wrapper">
+              <div class="header-left">
+                <h1 class="title">Upload Pattern</h1>
+              </div>
+              <div id="user-email-display-upload-pattern" class="user-email-display"></div>
+            </div>
+          </header>
+          <section class="panel">
+            <div id="pattern-dropzone" class="upload-area">
+              <div class="preview-header">
+                <h2 class="panel__title">Selected Patterns</h2>
+                <div class="upload-actions">
+                  <input type="file" id="pattern-file-input" class="file-input" multiple />
+                  <label for="pattern-file-input" class="button">Browse Files</label>
+                  <button id="pattern-clear-all" class="button" type="button">Clear All</button>
+                </div>
+              </div>
+              <p class="text">Browse, drag & drop, or paste pattern files</p>
+              <div id="pattern-preview-grid" class="preview-grid"></div>
+            </div>
+            <div class="upload-actions">
+                <button id="pattern-upload-button" class="button button--primary" type="button">Upload</button>
             </div>
           </section>
       </div>
@@ -776,6 +806,7 @@
     const navLinks = {
         library: document.getElementById('nav-library'),
         upload: document.getElementById('nav-upload'),
+        'upload-pattern': document.getElementById('nav-upload-pattern'),
         project: document.getElementById('nav-project'),
         admin: document.getElementById('nav-admin'),
     };
@@ -824,6 +855,7 @@
     const pages = {
         library: document.getElementById('page-library'),
         upload: document.getElementById('page-upload'),
+        'upload-pattern': document.getElementById('page-upload-pattern'),
         project: document.getElementById('page-project'),
         admin: document.getElementById('page-admin'),
     };
@@ -3039,6 +3071,8 @@
             loadAdminUsers();
         } else if (pageName === 'upload') {
             fetchSubjFrequencies();
+        } else if (pageName === 'upload-pattern') {
+            // Initialize pattern upload page if needed
         }
     }
 
@@ -7728,6 +7762,7 @@
 
     navLinks.library.addEventListener('click', (e) => { e.preventDefault(); navigateTo('library'); });
     navLinks.upload.addEventListener('click', (e) => { e.preventDefault(); navigateTo('upload'); });
+    navLinks['upload-pattern'].addEventListener('click', (e) => { e.preventDefault(); navigateTo('upload-pattern'); });
     navLinks.project.addEventListener('click', (e) => { e.preventDefault(); navigateTo('project'); });
     if (navLinks.admin) {
         navLinks.admin.addEventListener('click', (e) => { 
@@ -8465,6 +8500,9 @@
     function updateTagModeButtonText() {
         if (tagModeToggleBtn) {
             tagModeToggleBtn.textContent = tagSearchMode;
+            // Set black background and white text for both OR and AND modes
+            tagModeToggleBtn.style.backgroundColor = '#000';
+            tagModeToggleBtn.style.color = '#fff';
             console.log('updateTagModeButtonText called - setting button to:', tagSearchMode);
         } else {
             console.error('tagModeToggleBtn is null!');
