@@ -18,8 +18,14 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
-// Serve static files
-app.use(express.static('../'));
+// Middleware to ensure /api/* routes are not handled by static files
+app.use('/api', (req, res, next) => {
+    // Let API routes handle this - don't serve as static files
+    next();
+});
+
+// API routes must be defined BEFORE static file middleware
+// This ensures API requests are handled correctly
 
 // Route for login page
 app.get('/login.html', (req, res) => {
@@ -35,6 +41,9 @@ app.get('/admin.html', (req, res) => {
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../index.html'));
 });
+
+// Serve static files (must be AFTER API routes)
+app.use(express.static('../'));
 
 // --- Database Connection ---
 const db = new Database('database.sqlite');
@@ -573,6 +582,73 @@ app.get('/api/patterns', (req, res) => {
     } catch (err) {
         console.error('Error fetching patterns:', err.message);
         res.status(500).send('Error fetching patterns');
+    }
+});
+
+// 1a-2. Delete Pattern (must be before static middleware to work properly)
+app.delete('/api/patterns/:id', (req, res) => {
+    console.log(`[DELETE /api/patterns/:id] Request received for pattern ID: ${req.params.id}`);
+    try {
+        const patternId = parseInt(req.params.id);
+        
+        if (isNaN(patternId)) {
+            return res.status(400).send('Invalid pattern ID');
+        }
+
+        // Get user from session for ownership check
+        const user = getUserFromSession(req);
+        if (!user) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        const userLevel = parseInt(user.level) || 1;
+
+        // Get pattern to check ownership
+        const pattern = patternDb.prepare('SELECT * FROM patterns WHERE id = ?').get(patternId);
+        if (!pattern) {
+            return res.status(404).send('Pattern not found');
+        }
+
+        // Check ownership (level 3 can delete any pattern, level 1 can only delete their own)
+        if (userLevel !== 3) {
+            // Case-insensitive ownership check
+            if (!pattern.ownership || pattern.ownership.toLowerCase() !== user.email.toLowerCase()) {
+                return res.status(403).send('You do not have permission to delete this pattern');
+            }
+        }
+
+        // Get filepath before deletion for file cleanup
+        const filepath = pattern.filepath;
+
+        // Delete pattern tags first (foreign key constraint)
+        patternDb.prepare('DELETE FROM pattern_tag_links WHERE pattern_id = ?').run(patternId);
+
+        // Delete pattern from database
+        const result = patternDb.prepare('DELETE FROM patterns WHERE id = ?').run(patternId);
+
+        if (result.changes === 0) {
+            return res.status(404).send('Pattern not found');
+        }
+
+        // Delete the physical file
+        try {
+            const fullPath = path.resolve(filepath);
+            if (fs.existsSync(fullPath)) {
+                fs.unlinkSync(fullPath);
+                console.log(`Deleted pattern file: ${fullPath}`);
+            } else {
+                console.warn(`Pattern file not found for deletion: ${fullPath}`);
+            }
+        } catch (fileErr) {
+            console.error(`Error deleting pattern file ${filepath}:`, fileErr.message);
+            // Don't fail the request if file deletion fails
+        }
+
+        console.log(`Successfully deleted pattern ${patternId}`);
+        res.status(200).json({ message: 'Pattern deleted successfully', patternId: patternId });
+    } catch (err) {
+        console.error('Error deleting pattern:', err.message);
+        res.status(500).send('Error deleting pattern: ' + err.message);
     }
 });
 
@@ -1886,6 +1962,17 @@ async function sendApprovalEmail(email) {
     }
 }
 
+// Test route to verify API is working
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'API is working', timestamp: new Date().toISOString() });
+});
+
+// Log all registered routes on startup (for debugging)
 app.listen(port, () => {
     console.log(`Server listening at http://localhost:${port}`);
+    console.log('Registered API routes:');
+    console.log('  GET  /api/test');
+    console.log('  GET  /api/patterns');
+    console.log('  POST /api/patterns/upload');
+    console.log('  DELETE /api/patterns/:id');
 });

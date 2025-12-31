@@ -430,7 +430,36 @@
         </div>
       </div>
 
+      <!-- Success Dialog for Pattern Upload -->
+      <div id="pattern-upload-success-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p id="pattern-upload-success-message">Successfully uploaded pattern file(s)!</p>
+          <div class="modal-buttons">
+            <button id="ok-pattern-upload-success-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
 
+      <!-- Error Dialog for Pattern Upload -->
+      <div id="pattern-upload-error-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p id="pattern-upload-error-message">An error occurred during pattern upload. Please try again.</p>
+          <div class="modal-buttons">
+            <button id="ok-pattern-upload-error-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Pattern Confirmation Modal -->
+      <div id="delete-pattern-confirm-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p>Are you sure you want to delete this pattern?</p>
+          <div class="modal-buttons">
+            <button id="delete-pattern-cancel-btn" class="button">Cancel</button>
+            <button id="delete-pattern-confirm-btn" class="button is-primary button--danger">Delete Pattern</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Loading Overlay -->
       <div id="loading-overlay" class="modal is-hidden">
@@ -8078,6 +8107,14 @@
                 if (patternNameInput) {
                     patternNameInput.focus();
                 }
+            } else if (patternUploadSuccessModal && !patternUploadSuccessModal.classList.contains('is-hidden')) {
+                patternUploadSuccessModal.classList.add('is-hidden');
+            } else if (patternUploadErrorModal && !patternUploadErrorModal.classList.contains('is-hidden')) {
+                patternUploadErrorModal.classList.add('is-hidden');
+            } else if (deletePatternConfirmModal && !deletePatternConfirmModal.classList.contains('is-hidden')) {
+                deletePatternConfirmModal.classList.add('is-hidden');
+                delete deletePatternConfirmModal.dataset.patternId;
+                delete deletePatternConfirmModal.dataset.patternName;
             }
         }
     });
@@ -8166,8 +8203,14 @@
     const patternNameInput = document.getElementById('pattern-name-input');
     const patternNoImagesWarningModal = document.getElementById('pattern-no-images-warning-modal');
     const patternNoNameWarningModal = document.getElementById('pattern-no-name-warning-modal');
+    const patternUploadSuccessModal = document.getElementById('pattern-upload-success-modal');
+    const patternUploadErrorModal = document.getElementById('pattern-upload-error-modal');
+    const patternUploadSuccessMessage = document.getElementById('pattern-upload-success-message');
+    const patternUploadErrorMessage = document.getElementById('pattern-upload-error-message');
     const okPatternNoImagesBtn = document.getElementById('ok-pattern-no-images-btn');
     const okPatternNoNameBtn = document.getElementById('ok-pattern-no-name-btn');
+    const okPatternUploadSuccessBtn = document.getElementById('ok-pattern-upload-success-btn');
+    const okPatternUploadErrorBtn = document.getElementById('ok-pattern-upload-error-btn');
     let patternFilesToUpload = [];
 
     function handlePatternFiles(files) {
@@ -8277,6 +8320,94 @@
         });
     }
 
+    // Handle OK button for pattern upload success modal
+    if (okPatternUploadSuccessBtn && patternUploadSuccessModal) {
+        okPatternUploadSuccessBtn.addEventListener('click', () => {
+            patternUploadSuccessModal.classList.add('is-hidden');
+        });
+    }
+
+    // Handle OK button for pattern upload error modal
+    if (okPatternUploadErrorBtn && patternUploadErrorModal) {
+        okPatternUploadErrorBtn.addEventListener('click', () => {
+            patternUploadErrorModal.classList.add('is-hidden');
+        });
+    }
+
+    // Delete pattern confirmation modal elements
+    const deletePatternConfirmModal = document.getElementById('delete-pattern-confirm-modal');
+    const deletePatternCancelBtn = document.getElementById('delete-pattern-cancel-btn');
+    const deletePatternConfirmBtn = document.getElementById('delete-pattern-confirm-btn');
+
+    // Function to show delete pattern confirmation modal
+    function showDeletePatternModal(patternId, patternName) {
+        if (!deletePatternConfirmModal) return;
+        deletePatternConfirmModal.dataset.patternId = patternId;
+        deletePatternConfirmModal.dataset.patternName = patternName;
+        deletePatternConfirmModal.classList.remove('is-hidden');
+    }
+
+    // Handle cancel button for delete pattern modal
+    if (deletePatternCancelBtn && deletePatternConfirmModal) {
+        deletePatternCancelBtn.addEventListener('click', () => {
+            deletePatternConfirmModal.classList.add('is-hidden');
+            delete deletePatternConfirmModal.dataset.patternId;
+            delete deletePatternConfirmModal.dataset.patternName;
+        });
+    }
+
+    // Handle confirm button for delete pattern modal
+    if (deletePatternConfirmBtn && deletePatternConfirmModal) {
+        deletePatternConfirmBtn.addEventListener('click', async () => {
+            const patternId = deletePatternConfirmModal.dataset.patternId;
+            if (!patternId) return;
+
+            deletePatternConfirmModal.classList.add('is-hidden');
+            
+            try {
+                const sessionToken = localStorage.getItem('sessionToken');
+                const headers = {
+                    'Authorization': `Bearer ${sessionToken}`
+                };
+
+                const deleteUrl = `${API_URL}/api/patterns/${patternId}`;
+                console.log('[Delete Pattern] API_URL:', API_URL);
+                console.log('[Delete Pattern] Delete URL:', deleteUrl);
+                console.log('[Delete Pattern] Pattern ID:', patternId);
+                console.log('[Delete Pattern] Current origin:', window.location.origin);
+                
+                // Verify API_URL is pointing to port 3000, not 8080
+                if (deleteUrl.includes(':8080')) {
+                    console.error('[Delete Pattern] ERROR: API_URL is pointing to port 8080 instead of 3000!');
+                    throw new Error('API URL is incorrectly configured. Please check server setup.');
+                }
+                
+                const response = await fetch(deleteUrl, {
+                    method: 'DELETE',
+                    headers: headers
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Failed to delete pattern');
+                }
+
+                // Refresh the pattern thumbnails
+                await loadPatternThumbnails();
+            } catch (error) {
+                console.error('Error deleting pattern:', error);
+                // Show error modal
+                if (patternUploadErrorMessage && patternUploadErrorModal) {
+                    patternUploadErrorMessage.textContent = `Failed to delete pattern. ${error.message || 'Please try again.'}`;
+                    patternUploadErrorModal.classList.remove('is-hidden');
+                }
+            } finally {
+                delete deletePatternConfirmModal.dataset.patternId;
+                delete deletePatternConfirmModal.dataset.patternName;
+            }
+        });
+    }
+
     if (patternUploadButton) {
         patternUploadButton.addEventListener('click', async () => {
             // Validate files
@@ -8335,11 +8466,20 @@
                 // Refresh right screen to show uploaded patterns
                 await loadPatternThumbnails();
                 
-                alert(`Successfully uploaded ${result.count} pattern file(s)!`);
+                // Show success modal
+                if (patternUploadSuccessMessage && patternUploadSuccessModal) {
+                    const fileText = result.count === 1 ? 'file' : 'files';
+                    patternUploadSuccessMessage.textContent = `Successfully uploaded ${result.count} pattern ${fileText}!`;
+                    patternUploadSuccessModal.classList.remove('is-hidden');
+                }
                 patternUploadButton.disabled = false;
             } catch (error) {
                 console.error('Error uploading patterns:', error);
-                alert(`An error occurred during pattern upload. Please try again. Details: ${error.message}`);
+                // Show error modal
+                if (patternUploadErrorMessage && patternUploadErrorModal) {
+                    patternUploadErrorMessage.textContent = `An error occurred during pattern upload. Please try again.${error.message ? ' Details: ' + error.message : ''}`;
+                    patternUploadErrorModal.classList.remove('is-hidden');
+                }
                 if (loadingOverlay) loadingOverlay.classList.add('is-hidden');
                 patternUploadButton.disabled = false;
             }
@@ -8380,6 +8520,12 @@
             patterns.forEach(pattern => {
                 const thumbnailItem = document.createElement('div');
                 thumbnailItem.className = 'pattern-thumbnail-item';
+                thumbnailItem.dataset.patternId = pattern.id;
+                
+                // Container for image with delete button overlay
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'pattern-thumbnail-image-container';
+                imageContainer.style.cssText = 'position: relative; width: 100%;';
                 
                 const img = document.createElement('img');
                 img.className = 'pattern-thumbnail-image';
@@ -8393,14 +8539,39 @@
                     const fileIcon = document.createElement('div');
                     fileIcon.innerHTML = '📄';
                     fileIcon.style.cssText = 'font-size: 32px; text-align: center; padding: 20px; width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: #f5f5f5;';
-                    thumbnailItem.insertBefore(fileIcon, thumbnailItem.firstChild);
+                    imageContainer.insertBefore(fileIcon, imageContainer.firstChild);
                 };
+                
+                // Delete button (red X) - appears on hover
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'pattern-thumbnail-delete-btn';
+                deleteBtn.innerHTML = '✕';
+                deleteBtn.type = 'button';
+                deleteBtn.style.cssText = 'position: absolute; top: 5px; right: 5px; width: 28px; height: 28px; background: #dc3545; color: white; border: none; border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s; z-index: 10;';
+                deleteBtn.title = 'Delete pattern';
+                
+                // Show delete button on hover
+                thumbnailItem.addEventListener('mouseenter', () => {
+                    deleteBtn.style.opacity = '1';
+                });
+                thumbnailItem.addEventListener('mouseleave', () => {
+                    deleteBtn.style.opacity = '0';
+                });
+                
+                // Handle delete button click
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showDeletePatternModal(pattern.id, pattern.name || 'Unnamed Pattern');
+                });
+                
+                imageContainer.appendChild(img);
+                imageContainer.appendChild(deleteBtn);
                 
                 const nameDiv = document.createElement('div');
                 nameDiv.className = 'pattern-thumbnail-name';
                 nameDiv.textContent = pattern.name || 'Unnamed Pattern';
                 
-                thumbnailItem.appendChild(img);
+                thumbnailItem.appendChild(imageContainer);
                 thumbnailItem.appendChild(nameDiv);
                 patternThumbnailsGrid.appendChild(thumbnailItem);
             });
