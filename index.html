@@ -1222,6 +1222,7 @@
     let lightboxDirty = false; // Track if any tag was added or removed in lightbox
     let lightboxLocked = true; // Track if lightbox fields are locked (default: locked)
     let isProjectViewLightbox = false; // Track if lightbox is opened from project view (read-only mode)
+    let searchPatterns = []; // Store patterns found from search
 
     // --- Function Definitions ---
 
@@ -2108,6 +2109,137 @@
         }
     }
 
+    // Create a pattern card
+    function createPatternCard(pattern, index, patternSrc, currentSearchTags) {
+        const card = document.createElement('div');
+        card.className = 'preview-card library-card pattern-card';
+        card.dataset.patternId = pattern.id;
+        card.dataset.isPattern = 'true';
+
+        const img = document.createElement('img');
+        img.src = patternSrc;
+        img.style.cursor = 'pointer';
+        
+        img.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Patterns are not selectable like images, but can be clicked to view
+            console.log('Pattern clicked:', pattern.id);
+        });
+
+        card.appendChild(img);
+
+        // Add hover event listeners to show tags modal
+        let hoverTimeout;
+        card.addEventListener('mouseenter', (e) => {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = setTimeout(() => {
+                showPatternTagsModal(card, pattern, e);
+            }, 300);
+        });
+        
+        card.addEventListener('mouseleave', () => {
+            clearTimeout(hoverTimeout);
+            hideAllTagsModal();
+        });
+
+        // Add pattern indicator badge
+        const patternBadge = document.createElement('div');
+        patternBadge.className = 'pattern-badge';
+        patternBadge.textContent = 'PATTERN';
+        patternBadge.style.cssText = 'position: absolute; top: 8px; right: 8px; background: #007bff; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; z-index: 10;';
+        card.appendChild(patternBadge);
+
+        // Add tag overlay if pattern has tags
+        const patternTags = pattern.tags || [];
+        if (patternTags.length > 0) {
+            const tagOverlay = document.createElement('div');
+            tagOverlay.className = 'tag-overlay';
+            
+            const matchingTags = getMatchingTags(patternTags, currentSearchTags);
+            if (matchingTags.length > 0) {
+                tagOverlay.style.backgroundColor = 'rgba(255, 215, 0, 0.8)';
+                tagOverlay.textContent = matchingTags.join(', ');
+            } else {
+                tagOverlay.style.backgroundColor = 'rgba(0, 123, 255, 0.8)';
+                tagOverlay.textContent = patternTags.slice(0, 3).join(', ') + (patternTags.length > 3 ? '...' : '');
+            }
+            card.appendChild(tagOverlay);
+        }
+
+        return card;
+    }
+
+    // Show pattern tags modal on hover
+    function showPatternTagsModal(card, pattern, event) {
+        // Reuse the same modal structure as images
+        if (currentTagModal) {
+            currentTagModal.remove();
+        }
+
+        const modal = document.createElement('div');
+        modal.className = 'tags-hover-modal';
+        const modalContent = document.createElement('div');
+        modalContent.className = 'tags-hover-modal-content';
+        
+        const title = document.createElement('div');
+        title.className = 'tags-hover-modal-title';
+        title.textContent = 'Pattern Tags';
+        modalContent.appendChild(title);
+        
+        const tagsContainer = document.createElement('div');
+        tagsContainer.className = 'tags-hover-modal-tags';
+
+        const currentSearchTags = getActiveSearchTagTexts();
+        const patternTags = pattern.tags || [];
+
+        patternTags.forEach(tag => {
+            const tagElement = document.createElement('span');
+            tagElement.className = 'tags-hover-tag';
+            tagElement.style.backgroundColor = '#007bff';
+            tagElement.style.color = '#fff';
+
+            const tagLower = tag.toLowerCase();
+            const matchingSearchTerms = currentSearchTags.filter(searchTag => {
+                const searchLower = searchTag.toLowerCase();
+                if (!searchLower) return false;
+                return exactWordMode
+                    ? tagLower === searchLower
+                    : tagLower.includes(searchLower);
+            });
+
+            if (matchingSearchTerms.length > 0) {
+                tagElement.style.border = '2px solid #ffd700';
+                tagElement.style.boxShadow = '0 0 4px rgba(255, 215, 0, 0.5)';
+            }
+
+            tagElement.textContent = tag;
+            tagsContainer.appendChild(tagElement);
+        });
+        
+        modalContent.appendChild(tagsContainer);
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+        currentTagModal = modal;
+        
+        const rect = card.getBoundingClientRect();
+        const x = event.clientX + 10;
+        const y = event.clientY + 10;
+        
+        modal.style.left = `${x}px`;
+        modal.style.top = `${y}px`;
+        
+        setTimeout(() => {
+            const modalRect = modal.getBoundingClientRect();
+            if (modalRect.right > window.innerWidth) {
+                modal.style.left = `${x - modalRect.width - 20}px`;
+            }
+            if (modalRect.bottom > window.innerHeight) {
+                modal.style.top = `${y - modalRect.height - 20}px`;
+            }
+        }, 0);
+    }
+
     // Create an image card (normal or greyscale indicator)
     function createImageCard(image, index, imageSrc, currentSearchTags, isGreyscaleIndicator = false) {
         const card = document.createElement('div');
@@ -2252,10 +2384,12 @@
         const allImageTags = image.tags || [];
         
         // Filter out objective metadata tags (width, length, book, page, row, column, type, material, remark, brand, color)
-        const objectivePrefixes = ['width:', 'length:', 'book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'remark:', 'pattern:', 'brand:', 'color:'];
+        // BUT include pattern: tags since they are searchable
+        const objectivePrefixes = ['width:', 'length:', 'book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'remark:', 'brand:', 'color:'];
         const subjectiveTags = allImageTags.filter(tag => {
             const tagLower = tag.toLowerCase();
-            return !tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
+            // Include pattern: tags and tags without colons (subjective tags)
+            return tagLower.startsWith('pattern:') || (!tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix)));
         });
 
         const isAndMode = (tagSearchMode === 'AND');
@@ -2275,10 +2409,18 @@
                 .map(t => t.toLowerCase())
                 .filter(t => !t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix)));
 
+            // Include pattern: tags in matching check
+            const searchableImageTags = allImageTags
+                .map(t => t.toLowerCase())
+                .filter(t => {
+                    // Include pattern: tags and tags without colons (subjective tags)
+                    return t.startsWith('pattern:') || (!t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix)));
+                });
+
             matchesAllSearchTags = currentSearchTags.every(searchTag => {
                 const searchLower = searchTag.toLowerCase();
                 if (!searchLower) return false;
-                return subjectiveImageTags.some(imageTag => {
+                return searchableImageTags.some(imageTag => {
                     return exactWordMode
                         ? imageTag === searchLower
                         : imageTag.includes(searchLower);
@@ -2292,11 +2434,9 @@
             const tagOverlay = document.createElement('div');
             tagOverlay.className = 'tag-overlay';
 
-            // Check if any of the matching tags are subjective
-            const matchingSubjectiveTags = matchingTags.filter(tag => {
-                const tagLower = tag.toLowerCase();
-                return !tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
-            });
+            // Check matching tags (including pattern: tags)
+            // matchingTags already includes pattern: tags from getMatchingTags function
+            const matchingSubjectiveTags = matchingTags; // Already filtered in getMatchingTags
 
             // Always show all tags (or first 3 + count), but highlight if there are matches.
             // The overlay color should follow the GROUP tag (earliest chip the image matches),
@@ -2322,9 +2462,12 @@
                     for (const chipTag of chipTagsInOrder) {
                         if (matchingSubjectiveTags.some(mt => {
                             const mtLower = mt.toLowerCase();
-                            return exactWordMode
-                                ? mtLower === chipTag
-                                : mtLower.includes(chipTag);
+                            // Match if tag equals chip tag, or if pattern:tag contains chip tag (e.g., "pattern:twill" contains "twill")
+                            if (exactWordMode) {
+                                return mtLower === chipTag || (mtLower.startsWith('pattern:') && mtLower.substring(8) === chipTag);
+                            } else {
+                                return mtLower.includes(chipTag) || (mtLower.startsWith('pattern:') && mtLower.includes(chipTag));
+                            }
                         })) {
                             primaryTagLower = chipTag;
                             break;
@@ -2346,9 +2489,12 @@
                         if (!c) continue;
                         const hasMatch = matchingSubjectiveTags.some(mt => {
                             const mtLower = mt.toLowerCase();
-                            return exactWordMode
-                                ? mtLower === stLower
-                                : mtLower.includes(stLower);
+                            // Match if tag equals search tag, or if pattern:tag contains search tag (e.g., "pattern:twill" contains "twill")
+                            if (exactWordMode) {
+                                return mtLower === stLower || (mtLower.startsWith('pattern:') && mtLower.substring(8) === stLower);
+                            } else {
+                                return mtLower.includes(stLower) || (mtLower.startsWith('pattern:') && mtLower.includes(stLower));
+                            }
                         });
                         if (hasMatch) {
                             overlayColor = c;
@@ -2553,9 +2699,12 @@
                     for (const chipTag of chipTagsInOrder) {
                         if (matchingTags.some(mt => {
                             const mtLower = mt.toLowerCase();
-                            return exactWordMode
-                                ? mtLower === chipTag
-                                : mtLower.includes(chipTag);
+                            // Match if tag equals chip tag, or if pattern:tag contains chip tag (e.g., "pattern:twill" contains "twill")
+                            if (exactWordMode) {
+                                return mtLower === chipTag || (mtLower.startsWith('pattern:') && mtLower.substring(8) === chipTag);
+                            } else {
+                                return mtLower.includes(chipTag) || (mtLower.startsWith('pattern:') && mtLower.includes(chipTag));
+                            }
                         })) {
                             primaryTagLower = chipTag;
                             break;
@@ -2577,9 +2726,12 @@
                         if (!c) continue;
                         const hasMatch = matchingTags.some(mt => {
                             const mtLower = mt.toLowerCase();
-                            return exactWordMode
-                                ? mtLower === stLower
-                                : mtLower.includes(stLower);
+                            // Match if tag equals search tag, or if pattern:tag contains search tag (e.g., "pattern:twill" contains "twill")
+                            if (exactWordMode) {
+                                return mtLower === stLower || (mtLower.startsWith('pattern:') && mtLower.substring(8) === stLower);
+                            } else {
+                                return mtLower.includes(stLower) || (mtLower.startsWith('pattern:') && mtLower.includes(stLower));
+                            }
                         });
                         if (hasMatch) {
                             cardColor = c;
@@ -2599,7 +2751,7 @@
     }
 
     // Display a page of images (3 rows)
-    function displayImagePage(loadedImages, currentSearchTags) {
+    function displayImagePage(loadedImages, currentSearchTags, loadedPatterns = []) {
         const imagesToShow = imagesPerRow * ROWS_PER_PAGE;
         const startIndex = currentPage * imagesToShow;
         const endIndex = startIndex + imagesToShow;
@@ -2640,6 +2792,8 @@
             libraryGrid.appendChild(card);
             cardsAdded++;
         });
+
+        // Don't display patterns in search results (user requirement)
 
         // Show message if no images were added to the grid (and not in pool view, which has its own message)
         // This covers cases like: no images loaded, OR mode with no matches, etc.
@@ -2739,7 +2893,15 @@
             .filter(item => item !== null);
 
         const currentSearchTags = searchTags.map(tag => tag.text);
-        displayImagePage(loadedImages, currentSearchTags);
+        // Get patterns from searchPatterns if available
+        const loadedPatterns = searchPatterns.length > 0 ? searchPatterns.map((pattern, idx) => ({
+            pattern,
+            index: idx,
+            patternSrc: `${API_URL}/${pattern.filepath.replace(/\\/g, '/')}`,
+            loaded: true,
+            type: 'pattern'
+        })) : [];
+        displayImagePage(loadedImages, currentSearchTags, loadedPatterns);
     }
 
     // Load all remaining images
@@ -2943,9 +3105,12 @@
                         for (const chipTag of chipTagsInOrder) {
                             if (matchingSubjectiveTags.some(mt => {
                                 const mtLower = mt.toLowerCase();
-                                return exactWordMode
-                                    ? mtLower === chipTag
-                                    : mtLower.includes(chipTag);
+                                // Match if tag equals chip tag, or if pattern:tag contains chip tag (e.g., "pattern:twill" contains "twill")
+                                if (exactWordMode) {
+                                    return mtLower === chipTag || (mtLower.startsWith('pattern:') && mtLower.substring(8) === chipTag);
+                                } else {
+                                    return mtLower.includes(chipTag) || (mtLower.startsWith('pattern:') && mtLower.includes(chipTag));
+                                }
                             })) {
                                 primaryTagLower = chipTag;
                                 break;
@@ -2966,9 +3131,12 @@
                             if (!c) continue;
                             const hasMatch = matchingSubjectiveTags.some(mt => {
                                 const mtLower = mt.toLowerCase();
-                                return exactWordMode
-                                    ? mtLower === stLower
-                                    : mtLower.includes(stLower);
+                                // Match if tag equals search tag, or if pattern:tag contains search tag (e.g., "pattern:twill" contains "twill")
+                                if (exactWordMode) {
+                                    return mtLower === stLower || (mtLower.startsWith('pattern:') && mtLower.substring(8) === stLower);
+                                } else {
+                                    return mtLower.includes(stLower) || (mtLower.startsWith('pattern:') && mtLower.includes(stLower));
+                                }
                             });
                             if (hasMatch) {
                                 overlayColor = c;
@@ -3253,6 +3421,9 @@
                 // Sort by image ID in descending order (latest uploads first)
                 imagesToDisplay.sort((a, b) => b.id - a.id);
 
+                // Clear patterns when no search tags
+                searchPatterns = [];
+
                 console.log('Library view with no active tags, sorted latest first, preserving tagSelectedImages:', tagSelectedImages.length);
             } else {
                 // Library view with search tags (NOT pool view):
@@ -3284,18 +3455,34 @@
                 console.log('[FRONTEND] Using matchMode:', matchMode, 'for search');
 
                 const apiUrl = `${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}`;
+                const patternApiUrl = `${API_URL}/api/patterns/search?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}`;
                 console.log('[FRONTEND] API URL:', apiUrl);
+                console.log('[FRONTEND] Pattern API URL:', patternApiUrl);
                 console.log('[FRONTEND] Request parameters - tags:', currentSearchTags, 'mode:', searchMode, 'match:', matchMode);
                 
-                const tagResponse = await fetch(apiUrl, {
-                    headers: headers2
-                });
+                // Fetch both images and patterns in parallel
+                const [tagResponse, patternResponse] = await Promise.all([
+                    fetch(apiUrl, { headers: headers2 }),
+                    fetch(patternApiUrl, { headers: headers2 })
+                ]);
 
                 if (!tagResponse.ok) {
                     throw new Error(`Tag search failed: ${tagResponse.status} ${tagResponse.statusText}`);
                 }
 
                 const tagMatchingImages = await tagResponse.json();
+                let tagMatchingPatterns = [];
+                
+                if (patternResponse.ok) {
+                    tagMatchingPatterns = await patternResponse.json();
+                    console.log('[FRONTEND] Tag-matching patterns from backend found:', tagMatchingPatterns.length);
+                    // Store patterns for display
+                    searchPatterns = tagMatchingPatterns;
+                } else {
+                    console.warn('[FRONTEND] Pattern search failed:', patternResponse.status, patternResponse.statusText);
+                    searchPatterns = [];
+                }
+                
                 console.log('[FRONTEND] Tag-matching images from backend (subjective only) found:', tagMatchingImages.length);
                 console.log('[FRONTEND] Backend returned image IDs:', tagMatchingImages.map(img => img.id));
                 console.log('[FRONTEND] Backend returned image tags:', tagMatchingImages.map(img => ({ id: img.id, tags: img.tags })));
@@ -3457,17 +3644,34 @@
                 // Test if image loads
                 return new Promise((resolve) => {
                     const testImg = new Image();
-                    testImg.onload = () => resolve({ image, index, imageSrc, loaded: true });
+                    testImg.onload = () => resolve({ image, index, imageSrc, loaded: true, type: 'image' });
                     testImg.onerror = () => {
                         trackBrokenImage(image.id, imageSrc);
-                        resolve({ image, index, imageSrc, loaded: false });
+                        resolve({ image, index, imageSrc, loaded: false, type: 'image' });
                     };
                     testImg.src = imageSrc;
                 });
             });
 
-            // Wait for all image load tests to complete
-            const imageResults = await Promise.all(imagePromises);
+            // Process patterns (only when there are search tags)
+            const patternPromises = (currentSearchTags.length > 0 && searchPatterns.length > 0) ? searchPatterns.map(async (pattern, index) => {
+                const patternSrc = `${API_URL}/${pattern.filepath.replace(/\\/g, '/')}`;
+
+                // Test if pattern loads
+                return new Promise((resolve) => {
+                    const testImg = new Image();
+                    testImg.onload = () => resolve({ pattern, index, patternSrc, loaded: true, type: 'pattern' });
+                    testImg.onerror = () => resolve({ pattern, index, patternSrc, loaded: false, type: 'pattern' });
+                    testImg.src = patternSrc;
+                });
+            }) : [];
+
+            // Wait for all image and pattern load tests to complete
+            const allResults = await Promise.all([...imagePromises, ...patternPromises]);
+
+            // Separate images and patterns
+            const imageResults = allResults.filter(r => r.type === 'image');
+            const patternResults = allResults.filter(r => r.type === 'pattern');
 
             // Add ALL images to libraryImages (including broken ones) to preserve selections
             imageResults.forEach(({ image, index, imageSrc, loaded }) => {
@@ -3480,12 +3684,13 @@
                 });
             });
 
-            // Store all loaded images for pagination
+            // Store all loaded images and patterns for pagination
             const loadedImages = imageResults.filter(result => result.loaded);
+            const loadedPatterns = patternResults.filter(result => result.loaded);
             
-            // Clear loading skeletons and display first page
+            // Clear loading skeletons and display first page (with patterns if available)
             libraryGrid.innerHTML = '';
-            displayImagePage(loadedImages, currentSearchTags);
+            displayImagePage(loadedImages, currentSearchTags, loadedPatterns);
 
             // Show selection controls if there are images and search is active OR if we have selections
             // SPECIAL CASE: Always show controls in pool view, even with no images/selections
@@ -5114,6 +5319,7 @@
 
         // Clear all search tags
         searchTags = [];
+        searchPatterns = []; // Clear search patterns
         tagSelectedImages = []; // Clear tag-selected images
         imageSelectionSource = {}; // Clear selection source tracking
         librarySearchChips.innerHTML = '';
@@ -5206,10 +5412,17 @@
             return [];
         }
 
-        // Only consider subjective/feeling tags (no colon prefix), and respect exact/partial mode
-        const subjectiveTags = imageTags.filter(t => typeof t === 'string' && !t.includes(':'));
+        // Consider subjective tags (no colon) AND pattern tags (pattern: prefix)
+        // Exclude other metadata tags (book:, page:, etc.)
+        const objectivePrefixes = ['book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'width:', 'length:', 'remark:', 'brand:', 'color:'];
+        const searchableTags = imageTags.filter(t => {
+            if (typeof t !== 'string') return false;
+            const tagLower = t.toLowerCase();
+            // Include pattern: tags and tags without colons (subjective tags)
+            return tagLower.startsWith('pattern:') || (!tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix)));
+        });
 
-        return subjectiveTags.filter(imageTag =>
+        return searchableTags.filter(imageTag =>
             searchTags.some(searchTag => {
                 const imageTagLower = imageTag.toLowerCase();
                 const searchLower = searchTag.toLowerCase();
@@ -6174,6 +6387,7 @@
 
         // Clear search tags to show ALL images (provides visual feedback)
         searchTags = [];
+        searchPatterns = []; // Clear search patterns
 
         // Chips are visible for reference only in this mode
         chipsReferenceOnly = true;

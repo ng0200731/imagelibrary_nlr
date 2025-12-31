@@ -585,6 +585,186 @@ app.get('/api/patterns', (req, res) => {
     }
 });
 
+// 1a-1a. Search Patterns (similar to image search)
+app.get('/api/patterns/search', (req, res) => {
+    const tags = req.query.tags ? req.query.tags.split(',').filter(t => t) : [];
+    const mode = req.query.mode || 'OR';
+    const match = (req.query.match || 'exact').toLowerCase();
+    const isPartialMatch = match === 'partial';
+
+    // Extract tag names from pattern: prefixed tags (e.g., "pattern:twill" -> "twill")
+    // For pattern search, ONLY use tags that start with "pattern:" (extract them)
+    // Ignore other tags since patterns don't have image tags like "clara", "cat", etc.
+    const searchTags = [];
+    tags.forEach(tag => {
+        const tagLower = tag.toLowerCase();
+        if (tagLower.startsWith('pattern:')) {
+            // Find the colon position in the original tag (case-sensitive)
+            const colonIndex = tag.indexOf(':');
+            if (colonIndex > 0 && colonIndex < tag.length - 1) {
+                const tagName = tag.substring(colonIndex + 1).trim(); // Extract part after colon
+                if (tagName && !searchTags.includes(tagName)) {
+                    searchTags.push(tagName);
+                    console.log(`[PATTERN SEARCH] Extracted "${tagName}" from "${tag}"`);
+                }
+            }
+        }
+        // Ignore tags that don't start with "pattern:" - patterns don't have image tags
+    });
+
+    console.log('[PATTERN SEARCH] Original tags:', tags);
+    console.log('[PATTERN SEARCH] Search tags (only pattern: tags extracted):', searchTags);
+    console.log('[PATTERN SEARCH] Mode:', mode, 'Match:', match, 'isPartialMatch:', isPartialMatch);
+
+    // Get user from session for filtering
+    const user = getUserFromSession(req);
+    if (!user) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const userEmail = user.email;
+
+    try {
+        const userLevel = parseInt(user.level) || 1;
+        let patterns;
+
+        if (searchTags.length === 0) {
+            // Level 3 can see all patterns, level 1 can only see their own
+            if (userLevel === 3) {
+                patterns = patternDb.prepare('SELECT * FROM patterns ORDER BY created_at DESC').all();
+            } else {
+                // Case-insensitive ownership check
+                patterns = patternDb.prepare('SELECT * FROM patterns WHERE LOWER(ownership) = ? ORDER BY created_at DESC').all(userEmail.toLowerCase());
+            }
+        } else {
+            const placeholders = searchTags.map(() => '?').join(',');
+            let query;
+            let params;
+
+            const upperMode = mode.toUpperCase();
+
+            if (!isPartialMatch) {
+                // EXACT match behavior
+                if (upperMode === 'AND') {
+                    if (userLevel === 3) {
+                        query = `
+                            SELECT p.* FROM patterns p
+                            JOIN pattern_tag_links ptl ON p.id = ptl.pattern_id
+                            JOIN pattern_tags pt ON ptl.tag_id = pt.id
+                            WHERE pt.name IN (${placeholders})
+                            GROUP BY p.id
+                            HAVING COUNT(DISTINCT pt.name) = ?
+                        `;
+                        params = [...searchTags, searchTags.length];
+                    } else {
+                        query = `
+                            SELECT p.* FROM patterns p
+                            JOIN pattern_tag_links ptl ON p.id = ptl.pattern_id
+                            JOIN pattern_tags pt ON ptl.tag_id = pt.id
+                            WHERE LOWER(p.ownership) = ? AND pt.name IN (${placeholders})
+                            GROUP BY p.id
+                            HAVING COUNT(DISTINCT pt.name) = ?
+                        `;
+                        params = [userEmail.toLowerCase(), ...searchTags, searchTags.length];
+                    }
+                } else { // OR, exact match
+                    if (userLevel === 3) {
+                        query = `
+                            SELECT DISTINCT p.* FROM patterns p
+                            JOIN pattern_tag_links ptl ON p.id = ptl.pattern_id
+                            JOIN pattern_tags pt ON ptl.tag_id = pt.id
+                            WHERE pt.name IN (${placeholders})
+                        `;
+                        params = searchTags;
+                    } else {
+                        query = `
+                            SELECT DISTINCT p.* FROM patterns p
+                            JOIN pattern_tag_links ptl ON p.id = ptl.pattern_id
+                            JOIN pattern_tags pt ON ptl.tag_id = pt.id
+                            WHERE LOWER(p.ownership) = ? AND pt.name IN (${placeholders})
+                        `;
+                        params = [userEmail.toLowerCase(), ...searchTags];
+                    }
+                }
+            } else {
+                // PARTIAL match behavior using LIKE
+                const searchTagsLower = searchTags.map(t => t.toLowerCase());
+                const likePlaceholders = searchTagsLower.map(() => 'LOWER(pt.name) LIKE ?').join(' OR ');
+                const likeParams = searchTagsLower.map(t => `%${t}%`);
+
+                console.log('[PATTERN SEARCH] Partial match - searchTagsLower:', searchTagsLower, 'likeParams:', likeParams);
+
+                if (userLevel === 3) {
+                    query = `
+                        SELECT DISTINCT p.* FROM patterns p
+                        JOIN pattern_tag_links ptl ON p.id = ptl.pattern_id
+                        JOIN pattern_tags pt ON ptl.tag_id = pt.id
+                        WHERE (${likePlaceholders})
+                    `;
+                    params = likeParams;
+                } else {
+                    query = `
+                        SELECT DISTINCT p.* FROM patterns p
+                        JOIN pattern_tag_links ptl ON p.id = ptl.pattern_id
+                        JOIN pattern_tags pt ON ptl.tag_id = pt.id
+                        WHERE LOWER(p.ownership) = ? AND (${likePlaceholders})
+                    `;
+                    params = [userEmail.toLowerCase(), ...likeParams];
+                }
+            }
+
+            console.log('[PATTERN SEARCH] Query:', query);
+            console.log('[PATTERN SEARCH] Params:', params);
+            patterns = patternDb.prepare(query).all(params);
+            console.log('[PATTERN SEARCH] Found', patterns.length, 'patterns');
+        }
+
+        // Get tags for each pattern
+        const getPatternTags = patternDb.prepare(`
+            SELECT pt.name FROM pattern_tags pt
+            JOIN pattern_tag_links ptl ON pt.id = ptl.tag_id
+            WHERE ptl.pattern_id = ?
+        `);
+
+        let patternsWithTags = patterns.map(pattern => {
+            const patternTags = getPatternTags.all(pattern.id);
+            return {
+                ...pattern,
+                tags: patternTags.map(tag => tag.name)
+            };
+        });
+
+        // For partial + AND mode, ensure each pattern matches ALL search tags as substrings
+        if (isPartialMatch && mode.toUpperCase() === 'AND' && searchTags.length > 0) {
+            const searchTagsLower = searchTags.map(t => t.toLowerCase());
+            patternsWithTags = patternsWithTags.filter(pattern => {
+                const patternTagsLower = (pattern.tags || []).map(t => t.toLowerCase());
+                const matches = searchTagsLower.every(searchTag =>
+                    patternTagsLower.some(tagName => tagName.includes(searchTag))
+                );
+                return matches;
+            });
+        }
+        
+        // For exact + AND mode, ensure each pattern matches ALL search tags
+        if (!isPartialMatch && mode.toUpperCase() === 'AND' && searchTags.length > 0) {
+            const searchTagsLower = searchTags.map(t => t.toLowerCase());
+            patternsWithTags = patternsWithTags.filter(pattern => {
+                const patternTagsLower = (pattern.tags || []).map(t => t.toLowerCase());
+                const matches = searchTagsLower.every(searchTag =>
+                    patternTagsLower.includes(searchTag)
+                );
+                return matches;
+            });
+        }
+
+        res.json(patternsWithTags);
+    } catch (err) {
+        console.error('Error searching patterns:', err.message);
+        res.status(500).send('Error searching patterns');
+    }
+});
+
 // 1a-2. Delete Pattern (must be before static middleware to work properly)
 app.delete('/api/patterns/:id', (req, res) => {
     console.log(`[DELETE /api/patterns/:id] Request received for pattern ID: ${req.params.id}`);
@@ -692,6 +872,56 @@ app.get('/images', (req, res) => {
 
     console.log('[SEARCH] Tags:', tags, 'Mode:', mode, 'Match:', match, 'isPartialMatch:', isPartialMatch);
 
+    // Extract tag names from tags with colons
+    // For "pattern:twill": search for images with tag "pattern:twill" (stored as tag) AND images with tag "twill"
+    // For regular tags like "twill": also search for "pattern:twill" tags
+    // For other tags with colons: extract the name after colon
+    const expandedTags = [];
+    const tagMapping = {}; // Map original tag to its searchable tag(s)
+    
+    tags.forEach(tag => {
+        const colonIndex = tag.indexOf(':');
+        if (colonIndex > 0 && colonIndex < tag.length - 1) {
+            const prefix = tag.substring(0, colonIndex).toLowerCase();
+            const tagName = tag.substring(colonIndex + 1).trim();
+            
+            if (prefix === 'pattern' && tagName) {
+                // For "pattern:twill": search for both "pattern:twill" (the stored tag) and "twill"
+                if (!expandedTags.includes(tag)) {
+                    expandedTags.push(tag); // Keep "pattern:twill" as is (images have this as a tag)
+                }
+                if (tagName && !expandedTags.includes(tagName)) {
+                    expandedTags.push(tagName); // Also search for "twill"
+                }
+                tagMapping[tag] = [tag, tagName]; // Original maps to both
+            } else if (tagName) {
+                // For other tags with colons (e.g., "book:Album-01"), only extract the name
+                if (!expandedTags.includes(tagName)) {
+                    expandedTags.push(tagName);
+                }
+                tagMapping[tag] = [tagName];
+            } else {
+                expandedTags.push(tag);
+                tagMapping[tag] = [tag];
+            }
+        } else {
+            // Regular tag without colon (e.g., "twill")
+            // Also search for "pattern:twill" tags
+            if (!expandedTags.includes(tag)) {
+                expandedTags.push(tag);
+            }
+            const patternTag = `pattern:${tag}`;
+            if (!expandedTags.includes(patternTag)) {
+                expandedTags.push(patternTag); // Also search for pattern: prefix
+            }
+            tagMapping[tag] = [tag, patternTag]; // Original maps to both
+        }
+    });
+
+    console.log('[SEARCH] Original tags:', tags);
+    console.log('[SEARCH] Expanded tags (for searching):', expandedTags);
+    console.log('[SEARCH] Tag mapping:', tagMapping);
+
     // Get user from session for filtering
     const user = getUserFromSession(req);
     if (!user) {
@@ -713,35 +943,38 @@ app.get('/images', (req, res) => {
                 images = db.prepare('SELECT * FROM images WHERE ownership = ?').all(userEmail);
             }
         } else {
-            const placeholders = tags.map(() => '?').join(',');
+            // Use expandedTags for searching (includes both original tags and extracted names)
+            const placeholders = expandedTags.map(() => '?').join(',');
             let query;
             let params;
 
             const upperMode = mode.toUpperCase();
 
             if (!isPartialMatch) {
-                // Existing EXACT match behavior (t.name IN (...))
+                // EXACT match behavior
+                // expandedTags already includes both "twill" and "pattern:twill" when searching for "twill"
+                // So we just search for tags IN expandedTags (no need to double-add pattern: prefix)
                 if (upperMode === 'AND') {
+                    // For AND mode, we need to ensure the image matches all original tags
+                    // Since we expanded tags (e.g., "pattern:twill" -> "twill"), we'll post-filter
                     if (userLevel === 3) {
                         query = `
                             SELECT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE t.name IN (${placeholders}) AND INSTR(t.name, ':') = 0
+                            WHERE t.name IN (${placeholders})
                             GROUP BY i.id
-                            HAVING COUNT(DISTINCT t.name) = ?
                         `;
-                        params = [...tags, tags.length];
+                        params = expandedTags;
                     } else {
                         query = `
                             SELECT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE i.ownership = ? AND t.name IN (${placeholders}) AND INSTR(t.name, ':') = 0
+                            WHERE i.ownership = ? AND t.name IN (${placeholders})
                             GROUP BY i.id
-                            HAVING COUNT(DISTINCT t.name) = ?
                         `;
-                        params = [userEmail, ...tags, tags.length];
+                        params = [userEmail, ...expandedTags];
                     }
                 } else { // OR, exact match
                     if (userLevel === 3) {
@@ -749,24 +982,35 @@ app.get('/images', (req, res) => {
                             SELECT DISTINCT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE t.name IN (${placeholders}) AND INSTR(t.name, ':') = 0
+                            WHERE t.name IN (${placeholders})
                         `;
-                        params = tags;
+                        params = expandedTags;
                     } else {
                         query = `
                             SELECT DISTINCT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE i.ownership = ? AND t.name IN (${placeholders}) AND INSTR(t.name, ':') = 0
+                            WHERE i.ownership = ? AND t.name IN (${placeholders})
                         `;
-                        params = [userEmail, ...tags];
+                        params = [userEmail, ...expandedTags];
                     }
                 }
             } else {
-                // PARTIAL match behavior using LIKE and post-filter for AND
+                // PARTIAL match behavior using LIKE
+                // Use the SAME logic as frontend hover highlighting: tag.includes(searchTag)
+                // When searching for "twill", match any tag that contains "twill" (including "pattern:twill")
+                // Use original tags (not expanded) and match if tag contains the search term
                 const tagsLower = tags.map(t => t.toLowerCase());
-                const likePlaceholders = tagsLower.map(() => 'LOWER(t.name) LIKE ?').join(' OR ');
-                const likeParams = tagsLower.map(t => `%${t}%`);
+                const likeConditions = [];
+                const likeParams = [];
+                
+                tagsLower.forEach(searchTag => {
+                    // For each search tag, find tags that contain it (same as frontend: tag.includes(searchTag))
+                    likeConditions.push('LOWER(t.name) LIKE ?');
+                    likeParams.push(`%${searchTag}%`);
+                });
+                
+                const likePlaceholders = likeConditions.join(' OR ');
 
                 console.log('[SEARCH] Partial match - tagsLower:', tagsLower, 'likeParams:', likeParams);
 
@@ -775,7 +1019,7 @@ app.get('/images', (req, res) => {
                         SELECT DISTINCT i.* FROM images i
                         JOIN image_tags it ON i.id = it.image_id
                         JOIN tags t ON it.tag_id = t.id
-                        WHERE (${likePlaceholders}) AND INSTR(t.name, ':') = 0
+                        WHERE (${likePlaceholders})
                     `;
                     params = likeParams;
                 } else {
@@ -783,7 +1027,7 @@ app.get('/images', (req, res) => {
                         SELECT DISTINCT i.* FROM images i
                         JOIN image_tags it ON i.id = it.image_id
                         JOIN tags t ON it.tag_id = t.id
-                        WHERE i.ownership = ? AND (${likePlaceholders}) AND INSTR(t.name, ':') = 0
+                        WHERE i.ownership = ? AND (${likePlaceholders})
                     `;
                     params = [userEmail, ...likeParams];
                 }
@@ -810,27 +1054,52 @@ app.get('/images', (req, res) => {
             };
         });
 
-        // For partial + AND mode, ensure each image matches ALL search tags as substrings
-        if (isPartialMatch && mode.toUpperCase() === 'AND' && tags.length > 0) {
-            const tagsLower = tags.map(t => t.toLowerCase());
+        // For AND mode (both exact and partial), ensure each image matches ALL original search tags
+        // This handles tag expansion (e.g., "pattern:twill" should match images with "pattern:twill" tag)
+        if (mode.toUpperCase() === 'AND' && tags.length > 0) {
             imagesWithTags = imagesWithTags.filter(image => {
-                // Only check subjective tags (exclude objective metadata with colons)
-                const subjectiveTags = (image.tags || []).filter(t => !t.includes(':'));
-                const imageTagsLower = subjectiveTags.map(t => t.toLowerCase());
+                // Get all image tags (including pattern: tags, but excluding other metadata tags)
+                const allImageTags = image.tags || [];
+                // Keep pattern: tags and subjective tags, but exclude other metadata tags
+                const objectivePrefixes = ['book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'width:', 'length:', 'remark:', 'brand:', 'color:'];
+                const searchableTags = allImageTags.filter(t => {
+                    const tagLower = t.toLowerCase();
+                    // Include pattern: tags and tags without colons (subjective tags)
+                    return tagLower.startsWith('pattern:') || (!tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix)));
+                });
+                const imageTagsLower = searchableTags.map(t => t.toLowerCase());
 
-                const matches = tagsLower.every(searchTag =>
-                    imageTagsLower.some(tagName => tagName.includes(searchTag))
-                );
+                // Check if image matches all original tags using SAME logic as frontend hover
+                // Frontend uses: tagLower.includes(searchLower) for partial mode
+                const matchesAll = tags.every(originalTag => {
+                    const searchLower = originalTag.toLowerCase();
+                    if (!searchLower) return false;
+                    
+                    if (isPartialMatch) {
+                        // Partial match: same as frontend - check if any image tag contains the search tag
+                        return imageTagsLower.some(imageTag => imageTag.includes(searchLower));
+                    } else {
+                        // Exact match: check if any image tag exactly matches the search tag
+                        // Also check if pattern:tag matches (e.g., "pattern:twill" matches "twill")
+                        return imageTagsLower.some(imageTag => {
+                            if (imageTag === searchLower) return true;
+                            // Check if pattern:tag matches (e.g., "pattern:twill" === "pattern:twill" or ends with ":twill")
+                            if (imageTag.startsWith('pattern:') && imageTag.substring(8) === searchLower) return true;
+                            return false;
+                        });
+                    }
+                });
 
                 // Debug logging for image 190
                 if (image.id === 190) {
                     console.log('[DEBUG 190] Image tags:', image.tags);
-                    console.log('[DEBUG 190] Subjective tags:', subjectiveTags);
-                    console.log('[DEBUG 190] Search tags:', tagsLower);
-                    console.log('[DEBUG 190] Matches:', matches);
+                    console.log('[DEBUG 190] Searchable tags:', searchableTags);
+                    console.log('[DEBUG 190] Original search tags:', tags);
+                    console.log('[DEBUG 190] Tag mapping:', tagMapping);
+                    console.log('[DEBUG 190] Matches all:', matchesAll);
                 }
 
-                return matches;
+                return matchesAll;
             });
         }
 
@@ -848,22 +1117,23 @@ app.get('/tags', (req, res) => {
         let tags;
 
         if (query) {
-            // Search for SUBJECTIVE tags (no colon) that contain the query string
+            // Search for SUBJECTIVE tags (no colon) AND pattern tags (pattern:) that contain the query string
             tags = db.prepare(`
                 SELECT name, COUNT(it.image_id) as usage_count
                 FROM tags t
                 LEFT JOIN image_tags it ON t.id = it.tag_id
-                WHERE LOWER(t.name) LIKE ? AND INSTR(t.name, ':') = 0
+                WHERE LOWER(t.name) LIKE ?
+                  AND (INSTR(t.name, ':') = 0 OR LOWER(t.name) LIKE 'pattern:%')
                 GROUP BY t.id, t.name
                 ORDER BY usage_count DESC, t.name ASC
             `).all(`%${query}%`);
         } else {
-            // Get all SUBJECTIVE tags (no colon) with usage count
+            // Get all SUBJECTIVE tags (no colon) AND pattern tags with usage count
             tags = db.prepare(`
                 SELECT name, COUNT(it.image_id) as usage_count
                 FROM tags t
                 LEFT JOIN image_tags it ON t.id = it.tag_id
-                WHERE INSTR(t.name, ':') = 0
+                WHERE INSTR(t.name, ':') = 0 OR LOWER(t.name) LIKE 'pattern:%'
                 GROUP BY t.id, t.name
                 ORDER BY usage_count DESC, t.name ASC
             `).all();
@@ -1973,6 +2243,7 @@ app.listen(port, () => {
     console.log('Registered API routes:');
     console.log('  GET  /api/test');
     console.log('  GET  /api/patterns');
+    console.log('  GET  /api/patterns/search');
     console.log('  POST /api/patterns/upload');
     console.log('  DELETE /api/patterns/:id');
 });
