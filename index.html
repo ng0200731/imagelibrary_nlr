@@ -176,23 +176,23 @@
                     </div>
                   </div>
 
-                  <!-- Remark -->
-                  <div class="metadata-section">
-                    <h4>Remark</h4>
-                      <label class="tag-input">
-                        remark: <input id="obj-remark" type="text" placeholder="excellent condition, rare find" data-prefix="remark:" />
-                      </label>
-                  </div>
-
                   <!-- Pattern -->
                   <div class="metadata-section">
                     <h4>Pattern</h4>
                       <div class="pattern-field-wrapper">
                         <label class="tag-input">
                           pattern: 
-                          <select id="obj-pattern" class="pattern-select" data-prefix="pattern:">
-                            <option value="">Select Pattern...</option>
-                          </select>
+                          <div class="custom-pattern-dropdown">
+                            <div id="pattern-dropdown-toggle" class="pattern-dropdown-toggle" data-prefix="pattern:">
+                              <span class="pattern-dropdown-text">Select Pattern...</span>
+                              <span class="pattern-dropdown-arrow">▼</span>
+                            </div>
+                            <div id="pattern-dropdown-menu" class="pattern-dropdown-menu is-hidden">
+                              <div class="pattern-dropdown-options" id="pattern-dropdown-options">
+                                <!-- Options will be populated by JavaScript -->
+                              </div>
+                            </div>
+                          </div>
                         </label>
                         <button id="upload-pattern-btn" class="button" type="button">Upload Pattern</button>
                       </div>
@@ -202,6 +202,14 @@
                           <span id="selected-pattern-name" class="pattern-name-preview"></span>
                         </div>
                       </div>
+                  </div>
+
+                  <!-- Remark -->
+                  <div class="metadata-section">
+                    <h4>Remark</h4>
+                      <label class="tag-input">
+                        remark: <input id="obj-remark" type="text" placeholder="excellent condition, rare find" data-prefix="remark:" />
+                      </label>
                   </div>
 
                   <!-- Original Fields -->
@@ -981,7 +989,12 @@
     const objWidthInput = document.getElementById('obj-width');
     const objLengthInput = document.getElementById('obj-length');
     const objRemarkInput = document.getElementById('obj-remark');
-    const objPatternSelect = document.getElementById('obj-pattern');
+    const patternDropdownToggle = document.getElementById('pattern-dropdown-toggle');
+    const patternDropdownMenu = document.getElementById('pattern-dropdown-menu');
+    const patternDropdownOptions = document.getElementById('pattern-dropdown-options');
+    const patternDropdownText = patternDropdownToggle ? patternDropdownToggle.querySelector('.pattern-dropdown-text') : null;
+    let selectedPatternId = null;
+    let selectedPatternData = null;
     const objBrandInput = document.getElementById('obj-brand');
     const objColorInput = document.getElementById('obj-color');
     const objChips = document.getElementById('obj-chips');
@@ -1545,12 +1558,92 @@
                 flex: 1;
                 min-width: 200px;
             }
-            .pattern-select {
+            .custom-pattern-dropdown {
+                position: relative;
+                width: 100%;
+            }
+            .pattern-dropdown-toggle {
                 width: 100%;
                 padding: 8px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
                 font-size: 14px;
+                background: white;
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .pattern-dropdown-toggle:hover {
+                border-color: #999;
+            }
+            .pattern-dropdown-text {
+                flex: 1;
+            }
+            .pattern-dropdown-arrow {
+                margin-left: 10px;
+                font-size: 12px;
+                color: #666;
+            }
+            .pattern-dropdown-menu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                margin-top: 4px;
+                max-height: 300px;
+                overflow-y: auto;
+                z-index: 1000;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .pattern-dropdown-menu.is-hidden {
+                display: none !important;
+            }
+            .pattern-dropdown-options {
+                padding: 4px 0;
+            }
+            .pattern-dropdown-option {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .pattern-dropdown-option:hover {
+                background-color: #f5f5f5;
+            }
+            .pattern-dropdown-option.selected {
+                background-color: #e3f2fd;
+                border-left: 3px solid #2196f3;
+            }
+            .pattern-option-thumbnail {
+                width: 40px;
+                height: 40px;
+                flex-shrink: 0;
+                border-radius: 4px;
+                overflow: hidden;
+                border: 1px solid #ddd;
+                background: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .pattern-option-thumbnail img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+            .pattern-option-placeholder {
+                font-size: 20px;
+            }
+            .pattern-option-name {
+                flex: 1;
+                font-size: 14px;
+                color: #333;
             }
             .selected-pattern-preview {
                 margin-top: 10px;
@@ -8137,14 +8230,8 @@
     });
 
     // Add event listeners for all objective metadata inputs
-    [objBookInput, objPageInput, objRowInput, objColumnInput, objTypeInput, objMaterialInput, objWidthInput, objLengthInput, objRemarkInput, objPatternSelect, objBrandInput, objColorInput].forEach(input => {
+    [objBookInput, objPageInput, objRowInput, objColumnInput, objTypeInput, objMaterialInput, objWidthInput, objLengthInput, objRemarkInput, objBrandInput, objColorInput].forEach(input => {
         if (input) {
-            // Handle select elements differently
-            if (input === objPatternSelect) {
-                input.addEventListener('change', () => {
-                    // Preview is handled in separate event listener
-                });
-            }
             input.addEventListener('keydown', (e) => {
                 // Special handling for width and length inputs - Tab should move focus without clearing
                 if ((input === objWidthInput || input === objLengthInput) && e.key === 'Tab') {
@@ -8277,19 +8364,27 @@
         objChips.innerHTML = '';
 
         // Clear all objective metadata inputs
-        [objBookInput, objPageInput, objRowInput, objColumnInput, objTypeInput, objMaterialInput, objWidthInput, objLengthInput, objRemarkInput, objPatternSelect, objBrandInput, objColorInput].forEach(input => {
+        [objBookInput, objPageInput, objRowInput, objColumnInput, objTypeInput, objMaterialInput, objWidthInput, objLengthInput, objRemarkInput, objBrandInput, objColorInput].forEach(input => {
             if (input) {
-                if (input === objPatternSelect) {
-                    input.selectedIndex = 0; // Reset to first option (Select Pattern...)
-                } else {
-                    input.value = '';
-                }
+                input.value = '';
             }
         });
+        
+        // Clear pattern dropdown
+        if (patternDropdownText) {
+            patternDropdownText.textContent = 'Select Pattern...';
+        }
+        selectedPatternId = null;
+        selectedPatternData = null;
         
         // Hide pattern preview when clearing
         if (selectedPatternPreview) {
             selectedPatternPreview.classList.add('is-hidden');
+        }
+        
+        // Close dropdown menu
+        if (patternDropdownMenu) {
+            patternDropdownMenu.classList.add('is-hidden');
         }
 
         filesToUpload = [];
@@ -8716,7 +8811,7 @@
 
     // Function to load patterns into dropdown
     async function loadPatternsIntoDropdown() {
-        if (!objPatternSelect) return;
+        if (!patternDropdownOptions) return;
 
         try {
             const sessionToken = localStorage.getItem('sessionToken');
@@ -8737,24 +8832,119 @@
 
             const patterns = await response.json();
             
-            // Clear existing options except the first one
-            objPatternSelect.innerHTML = '<option value="">Select Pattern...</option>';
+            // Ensure dropdown menu is hidden when loading patterns
+            if (patternDropdownMenu) {
+                patternDropdownMenu.classList.add('is-hidden');
+            }
+            
+            // Clear existing options
+            patternDropdownOptions.innerHTML = '';
 
             if (patterns.length === 0) {
+                const noPatternsOption = document.createElement('div');
+                noPatternsOption.className = 'pattern-dropdown-option';
+                noPatternsOption.textContent = 'No patterns available';
+                noPatternsOption.style.padding = '10px';
+                noPatternsOption.style.color = '#999';
+                patternDropdownOptions.appendChild(noPatternsOption);
                 return;
             }
 
-            // Add patterns to dropdown
+            // Add patterns to dropdown with thumbnails
             patterns.forEach(pattern => {
-                const option = document.createElement('option');
-                option.value = pattern.id;
-                option.textContent = pattern.name || 'Unnamed Pattern';
+                const option = document.createElement('div');
+                option.className = 'pattern-dropdown-option';
+                option.dataset.patternId = pattern.id;
                 option.dataset.patternName = pattern.name || 'Unnamed Pattern';
                 option.dataset.patternFilepath = pattern.filepath;
-                objPatternSelect.appendChild(option);
+                
+                // Create thumbnail container
+                const thumbnailContainer = document.createElement('div');
+                thumbnailContainer.className = 'pattern-option-thumbnail';
+                
+                const img = document.createElement('img');
+                const filename = pattern.filepath.split(/[/\\]/).pop();
+                img.src = `${API_URL}/uploads/patterns/${filename}`;
+                img.alt = pattern.name || 'Pattern';
+                img.onerror = function() {
+                    // If image fails to load, show placeholder
+                    this.style.display = 'none';
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'pattern-option-placeholder';
+                    placeholder.innerHTML = '📄';
+                    thumbnailContainer.appendChild(placeholder);
+                };
+                
+                thumbnailContainer.appendChild(img);
+                
+                // Create name container
+                const nameContainer = document.createElement('div');
+                nameContainer.className = 'pattern-option-name';
+                nameContainer.textContent = pattern.name || 'Unnamed Pattern';
+                
+                option.appendChild(thumbnailContainer);
+                option.appendChild(nameContainer);
+                
+                // Mark as selected if this is the currently selected pattern
+                if (selectedPatternId && pattern.id === selectedPatternId) {
+                    option.classList.add('selected');
+                }
+                
+                // Add click handler
+                option.addEventListener('click', () => {
+                    selectPattern(pattern.id, pattern.name || 'Unnamed Pattern', pattern.filepath);
+                });
+                
+                patternDropdownOptions.appendChild(option);
             });
         } catch (error) {
             console.error('Error loading patterns into dropdown:', error);
+        }
+    }
+
+    // Function to select a pattern
+    function selectPattern(patternId, patternName, patternFilepath) {
+        selectedPatternId = patternId;
+        selectedPatternData = { id: patternId, name: patternName, filepath: patternFilepath };
+        
+        // Remove selected class from all options
+        if (patternDropdownOptions) {
+            const allOptions = patternDropdownOptions.querySelectorAll('.pattern-dropdown-option');
+            allOptions.forEach(opt => opt.classList.remove('selected'));
+            
+            // Add selected class to the clicked option
+            const selectedOption = patternDropdownOptions.querySelector(`[data-pattern-id="${patternId}"]`);
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
+            }
+        }
+        
+        // Update dropdown toggle text
+        if (patternDropdownText) {
+            patternDropdownText.textContent = patternName;
+        }
+        
+        // Hide dropdown menu (collapse after selection)
+        if (patternDropdownMenu) {
+            patternDropdownMenu.classList.add('is-hidden');
+        }
+        
+        // Show preview
+        if (selectedPatternName) {
+            selectedPatternName.textContent = patternName;
+        }
+        
+        if (selectedPatternThumbnail && patternFilepath) {
+            const filename = patternFilepath.split(/[/\\]/).pop();
+            selectedPatternThumbnail.src = `${API_URL}/uploads/patterns/${filename}`;
+            selectedPatternThumbnail.onerror = function() {
+                this.style.display = 'none';
+            };
+            selectedPatternThumbnail.style.display = 'block';
+        }
+        
+        if (selectedPatternPreview) {
+            selectedPatternPreview.classList.remove('is-hidden');
         }
     }
 
@@ -8853,39 +9043,23 @@
         }
     }
 
-    // Handle pattern dropdown change
-    if (objPatternSelect) {
-        objPatternSelect.addEventListener('change', (e) => {
-            const selectedOption = e.target.options[e.target.selectedIndex];
-            if (selectedOption.value) {
-                // Show preview
-                const patternName = selectedOption.dataset.patternName || selectedOption.textContent;
-                const patternFilepath = selectedOption.dataset.patternFilepath;
-                
-                if (selectedPatternName) {
-                    selectedPatternName.textContent = patternName;
-                }
-                
-                if (selectedPatternThumbnail && patternFilepath) {
-                    const filename = patternFilepath.split(/[/\\]/).pop();
-                    selectedPatternThumbnail.src = `${API_URL}/uploads/patterns/${filename}`;
-                    selectedPatternThumbnail.onerror = function() {
-                        this.style.display = 'none';
-                    };
-                    selectedPatternThumbnail.style.display = 'block';
-                }
-                
-                if (selectedPatternPreview) {
-                    selectedPatternPreview.classList.remove('is-hidden');
-                }
-            } else {
-                // Hide preview
-                if (selectedPatternPreview) {
-                    selectedPatternPreview.classList.add('is-hidden');
-                }
+    // Handle pattern dropdown toggle click
+    if (patternDropdownToggle) {
+        patternDropdownToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (patternDropdownMenu) {
+                patternDropdownMenu.classList.toggle('is-hidden');
             }
         });
     }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (patternDropdownMenu && !patternDropdownMenu.contains(e.target) && 
+            patternDropdownToggle && !patternDropdownToggle.contains(e.target)) {
+            patternDropdownMenu.classList.add('is-hidden');
+        }
+    });
 
     // Handle Upload Pattern button click
     if (uploadPatternBtn) {
@@ -8959,16 +9133,13 @@
         });
 
         // Handle pattern select separately (get pattern name, not ID)
-        if (objPatternSelect && objPatternSelect.value) {
-            const selectedOption = objPatternSelect.options[objPatternSelect.selectedIndex];
-            if (selectedOption && selectedOption.value) {
-                const patternName = selectedOption.dataset.patternName || selectedOption.textContent;
-                const prefix = 'pattern:';
-                const hasInChips = objTags.some(tag => tag.toLowerCase().startsWith(prefix));
-                if (!hasInChips && patternName) {
-                    const tag = patternName.toLowerCase().startsWith(prefix) ? patternName : `${prefix}${patternName}`;
-                    objTags.push(tag);
-                }
+        if (selectedPatternData && selectedPatternData.id) {
+            const patternName = selectedPatternData.name;
+            const prefix = 'pattern:';
+            const hasInChips = objTags.some(tag => tag.toLowerCase().startsWith(prefix));
+            if (!hasInChips && patternName) {
+                const tag = patternName.toLowerCase().startsWith(prefix) ? patternName : `${prefix}${patternName}`;
+                objTags.push(tag);
             }
         }
         
