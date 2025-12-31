@@ -5158,8 +5158,13 @@
         }
 
         const currentImage = libraryImages[index];
-        // Only show subjective/feeling tags (exclude metadata with prefixes)
-        const imageTags = (currentImage.tags || []).filter(t => !isObjectiveTag(t));
+        // Show subjective/feeling tags and pattern tags (exclude other metadata with prefixes)
+        const imageTags = (currentImage.tags || []).filter(t => {
+            // Always include pattern tags
+            if (t && t.toLowerCase().startsWith('pattern:')) return true;
+            // Include non-objective tags
+            return !isObjectiveTag(t);
+        });
         lightboxTags.innerHTML = '';
 
         // Left column: tag list + add input (frequency panel floats separately)
@@ -5177,6 +5182,16 @@
             allTagSet.forEach(tagText => {
             const chip = document.createElement('span');
             chip.className = 'lightbox-tag-chip';
+
+            // Check if this is a pattern tag
+            const isPatternTag = tagText.toLowerCase().startsWith('pattern:');
+            
+            // Apply blue background for pattern tags
+            if (isPatternTag) {
+                chip.style.backgroundColor = '#007bff';
+                chip.style.color = '#fff';
+                chip.style.border = '1px solid #0056b3';
+            }
 
             // Get current search tags for highlighting
             const currentSearchTags = searchTags.map(tag => tag.text);
@@ -5198,8 +5213,11 @@
 
                 // In exact word mode, highlight the whole tag
                 if (exactWordMode) {
-                    chip.style.backgroundColor = '#ffd700';
-                    chip.style.color = '#000';
+                    // For pattern tags, keep blue background but add gold border
+                    if (!isPatternTag) {
+                        chip.style.backgroundColor = '#ffd700';
+                        chip.style.color = '#000';
+                    }
                     chip.style.fontWeight = '600';
                     chip.textContent = tagText;
                 } else {
@@ -5223,24 +5241,27 @@
                 chip.textContent = tagText;
             }
 
-            // Add red remove "×" to request confirmation before deletion
-            const removeBtn = document.createElement('span');
-            removeBtn.className = 'lightbox-tag-remove';
-            removeBtn.textContent = '×';
-            removeBtn.title = 'Remove this tag from the image';
-            removeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                // Check if locked - tag removal should still work, but show message if locked
-                if (lightboxLocked) {
-                    showLightboxToast('Fields are locked. Click the lock icon to unlock.');
-                    return;
-                }
-                handleRemoveTagFromImage(currentImage.id, tagText);
-            });
-            // Ensure remove button is always clickable (even when parent might be locked)
-            removeBtn.style.pointerEvents = 'auto';
-            removeBtn.style.cursor = 'pointer';
-            chip.appendChild(removeBtn);
+            // Only add remove button for non-pattern tags
+            if (!isPatternTag) {
+                // Add red remove "×" to request confirmation before deletion
+                const removeBtn = document.createElement('span');
+                removeBtn.className = 'lightbox-tag-remove';
+                removeBtn.textContent = '×';
+                removeBtn.title = 'Remove this tag from the image';
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    // Check if locked - tag removal should still work, but show message if locked
+                    if (lightboxLocked) {
+                        showLightboxToast('Fields are locked. Click the lock icon to unlock.');
+                        return;
+                    }
+                    handleRemoveTagFromImage(currentImage.id, tagText);
+                });
+                // Ensure remove button is always clickable (even when parent might be locked)
+                removeBtn.style.pointerEvents = 'auto';
+                removeBtn.style.cursor = 'pointer';
+                chip.appendChild(removeBtn);
+            }
 
                 tagList.appendChild(chip);
             });
