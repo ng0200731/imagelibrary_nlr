@@ -248,12 +248,12 @@
                   <div class="preview-header">
                     <h2 class="panel__title">Selected Patterns</h2>
                     <div class="upload-actions">
-                      <input type="file" id="pattern-file-input" class="file-input" multiple />
-                      <label for="pattern-file-input" class="button">Browse Files</label>
+                      <input type="file" id="pattern-file-input" class="file-input" />
+                      <label for="pattern-file-input" class="button">Browse File</label>
                       <button id="pattern-clear-all" class="button" type="button">Clear All</button>
                     </div>
                   </div>
-                  <p class="text">Browse, drag & drop, or paste pattern files</p>
+                  <p class="text">Browse, drag & drop, or paste pattern file</p>
                   <div id="pattern-preview-grid" class="preview-grid"></div>
                 </div>
                 <div class="upload-actions">
@@ -413,7 +413,7 @@
       <!-- Warning Dialog for Pattern Upload - No Images -->
       <div id="pattern-no-images-warning-modal" class="modal is-hidden">
         <div class="modal-content-text">
-          <p>Please select at least one pattern file to upload.</p>
+          <p>Please select a pattern file to upload.</p>
           <div class="modal-buttons">
             <button id="ok-pattern-no-images-btn" class="button is-primary">OK</button>
           </div>
@@ -430,10 +430,20 @@
         </div>
       </div>
 
+      <!-- Warning Dialog for Pattern Upload - Duplicate Name -->
+      <div id="pattern-duplicate-name-warning-modal" class="modal is-hidden">
+        <div class="modal-content-text">
+          <p id="pattern-duplicate-name-message">This pattern name already exists. Please use a different name.</p>
+          <div class="modal-buttons">
+            <button id="ok-pattern-duplicate-name-btn" class="button is-primary">OK</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Success Dialog for Pattern Upload -->
       <div id="pattern-upload-success-modal" class="modal is-hidden">
         <div class="modal-content-text">
-          <p id="pattern-upload-success-message">Successfully uploaded pattern file(s)!</p>
+          <p id="pattern-upload-success-message">Successfully uploaded pattern file!</p>
           <div class="modal-buttons">
             <button id="ok-pattern-upload-success-btn" class="button is-primary">OK</button>
           </div>
@@ -1470,6 +1480,28 @@
     
     // Initialize styles on page load
     addTagsHoverModalStyles();
+    
+    // Add CSS styles to hide scrollbar on dropzone
+    function addDropzoneScrollbarStyles() {
+        if (document.getElementById('dropzone-scrollbar-styles')) return; // Already added
+        
+        const style = document.createElement('style');
+        style.id = 'dropzone-scrollbar-styles';
+        style.textContent = `
+            #dropzone::-webkit-scrollbar {
+                display: none !important;
+            }
+            #dropzone {
+                -ms-overflow-style: none !important;
+                scrollbar-width: none !important;
+                overflow: auto !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Initialize dropzone scrollbar styles on page load
+    addDropzoneScrollbarStyles();
 
     // Show modal with all tags on hover
     function showAllTagsModal(card, image, event) {
@@ -3223,7 +3255,19 @@
                 card.appendChild(img);
                 card.appendChild(previewIcon);
                 card.appendChild(rulerIcon);
+                
+                // Save scroll position before appending to prevent auto-scroll
+                const dropzone = document.getElementById('dropzone');
+                const scrollTop = dropzone ? dropzone.scrollTop : 0;
+                const scrollLeft = dropzone ? dropzone.scrollLeft : 0;
+                
                 previewGrid.appendChild(card);
+                
+                // Restore scroll position to prevent scrolling after image load
+                if (dropzone) {
+                    dropzone.scrollTop = scrollTop;
+                    dropzone.scrollLeft = scrollLeft;
+                }
                 
                 // Check if there's only one image and adjust upload-area scrolling
                 setTimeout(() => {
@@ -3233,6 +3277,11 @@
                         uploadArea.classList.add('single-image');
                     } else if (uploadArea) {
                         uploadArea.classList.remove('single-image');
+                    }
+                    // Restore scroll position again after timeout to ensure it's maintained
+                    if (uploadArea) {
+                        uploadArea.scrollTop = scrollTop;
+                        uploadArea.scrollLeft = scrollLeft;
                     }
                 }, 100);
             };
@@ -8107,6 +8156,12 @@
                 if (patternNameInput) {
                     patternNameInput.focus();
                 }
+            } else if (patternDuplicateNameWarningModal && !patternDuplicateNameWarningModal.classList.contains('is-hidden')) {
+                patternDuplicateNameWarningModal.classList.add('is-hidden');
+                if (patternNameInput) {
+                    patternNameInput.focus();
+                    patternNameInput.select();
+                }
             } else if (patternUploadSuccessModal && !patternUploadSuccessModal.classList.contains('is-hidden')) {
                 patternUploadSuccessModal.classList.add('is-hidden');
             } else if (patternUploadErrorModal && !patternUploadErrorModal.classList.contains('is-hidden')) {
@@ -8203,61 +8258,71 @@
     const patternNameInput = document.getElementById('pattern-name-input');
     const patternNoImagesWarningModal = document.getElementById('pattern-no-images-warning-modal');
     const patternNoNameWarningModal = document.getElementById('pattern-no-name-warning-modal');
+    const patternDuplicateNameWarningModal = document.getElementById('pattern-duplicate-name-warning-modal');
+    const patternDuplicateNameMessage = document.getElementById('pattern-duplicate-name-message');
     const patternUploadSuccessModal = document.getElementById('pattern-upload-success-modal');
     const patternUploadErrorModal = document.getElementById('pattern-upload-error-modal');
     const patternUploadSuccessMessage = document.getElementById('pattern-upload-success-message');
     const patternUploadErrorMessage = document.getElementById('pattern-upload-error-message');
     const okPatternNoImagesBtn = document.getElementById('ok-pattern-no-images-btn');
     const okPatternNoNameBtn = document.getElementById('ok-pattern-no-name-btn');
+    const okPatternDuplicateNameBtn = document.getElementById('ok-pattern-duplicate-name-btn');
     const okPatternUploadSuccessBtn = document.getElementById('ok-pattern-upload-success-btn');
     const okPatternUploadErrorBtn = document.getElementById('ok-pattern-upload-error-btn');
     let patternFilesToUpload = [];
 
     function handlePatternFiles(files) {
-        for (const file of files) {
-            // Accept any file type for patterns
-            patternFilesToUpload.push(file);
+        // Only accept the first file (single file support)
+        if (!files || files.length === 0) return;
+        
+        const file = files[0]; // Only take the first file
+        
+        // Clear existing files and preview
+        if (patternPreviewGrid) patternPreviewGrid.innerHTML = '';
+        patternFilesToUpload = [];
+        
+        // Accept any file type for patterns
+        patternFilesToUpload.push(file);
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const card = document.createElement('div');
-                card.className = 'preview-card';
-                card.dataset.fileName = file.name;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const card = document.createElement('div');
+            card.className = 'preview-card';
+            card.dataset.fileName = file.name;
 
-                // Check if it's an image to preview, otherwise show file icon
-                if (file.type.startsWith('image/')) {
-                    const img = document.createElement('img');
-                    img.src = e.target.result;
-                    img.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
-                    card.appendChild(img);
-                } else {
-                    const fileIcon = document.createElement('div');
-                    fileIcon.innerHTML = '📄';
-                    fileIcon.style.cssText = 'font-size: 48px; text-align: center; padding: 20px;';
-                    const fileName = document.createElement('div');
-                    fileName.textContent = file.name;
-                    fileName.style.cssText = 'text-align: center; margin-top: 10px; font-size: 12px; word-break: break-all; padding: 0 8px;';
-                    card.appendChild(fileIcon);
-                    card.appendChild(fileName);
+            // Check if it's an image to preview, otherwise show file icon
+            if (file.type.startsWith('image/')) {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
+                card.appendChild(img);
+            } else {
+                const fileIcon = document.createElement('div');
+                fileIcon.innerHTML = '📄';
+                fileIcon.style.cssText = 'font-size: 48px; text-align: center; padding: 20px;';
+                const fileName = document.createElement('div');
+                fileName.textContent = file.name;
+                fileName.style.cssText = 'text-align: center; margin-top: 10px; font-size: 12px; word-break: break-all; padding: 0 8px;';
+                card.appendChild(fileIcon);
+                card.appendChild(fileName);
+            }
+
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'delete-btn';
+            del.textContent = '×';
+            del.addEventListener('click', () => {
+                const index = patternFilesToUpload.indexOf(file);
+                if (index > -1) {
+                    patternFilesToUpload.splice(index, 1);
                 }
+                card.remove();
+            });
 
-                const del = document.createElement('button');
-                del.type = 'button';
-                del.className = 'delete-btn';
-                del.textContent = '×';
-                del.addEventListener('click', () => {
-                    const index = patternFilesToUpload.indexOf(file);
-                    if (index > -1) {
-                        patternFilesToUpload.splice(index, 1);
-                    }
-                    card.remove();
-                });
-
-                card.appendChild(del);
-                if (patternPreviewGrid) patternPreviewGrid.appendChild(card);
-            };
-            reader.readAsDataURL(file);
-        }
+            card.appendChild(del);
+            if (patternPreviewGrid) patternPreviewGrid.appendChild(card);
+        };
+        reader.readAsDataURL(file);
     }
 
     if (patternFileInput) {
@@ -8287,7 +8352,10 @@
         patternDropzone.addEventListener('drop', (e) => {
             e.preventDefault();
             patternDropzone.classList.remove('dragover');
-            handlePatternFiles(e.dataTransfer.files);
+            // Only accept the first file (single file support)
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handlePatternFiles(e.dataTransfer.files);
+            }
         });
 
         // Paste support
@@ -8296,6 +8364,7 @@
             const patternPage = document.getElementById('page-upload-pattern');
             if (patternPage && !patternPage.classList.contains('is-hidden')) {
                 if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+                    // Only accept the first file (single file support)
                     handlePatternFiles(e.clipboardData.files);
                 }
             }
@@ -8316,6 +8385,18 @@
             // Focus on pattern name input
             if (patternNameInput) {
                 patternNameInput.focus();
+            }
+        });
+    }
+
+    // Handle OK button for pattern duplicate name warning modal
+    if (okPatternDuplicateNameBtn && patternDuplicateNameWarningModal) {
+        okPatternDuplicateNameBtn.addEventListener('click', () => {
+            patternDuplicateNameWarningModal.classList.add('is-hidden');
+            // Focus on pattern name input and select the text
+            if (patternNameInput) {
+                patternNameInput.focus();
+                patternNameInput.select();
             }
         });
     }
@@ -8427,6 +8508,16 @@
                 return;
             }
 
+            // Check for duplicate pattern name (case-insensitive)
+            const isDuplicate = await checkDuplicatePatternName(patternName);
+            if (isDuplicate) {
+                if (patternDuplicateNameWarningModal && patternDuplicateNameMessage) {
+                    patternDuplicateNameMessage.textContent = `Pattern name "${patternName}" already exists. Please use a different name.`;
+                    patternDuplicateNameWarningModal.classList.remove('is-hidden');
+                }
+                return;
+            }
+
             const formData = new FormData();
             patternFilesToUpload.forEach(file => {
                 formData.append('patterns', file);
@@ -8468,8 +8559,7 @@
                 
                 // Show success modal
                 if (patternUploadSuccessMessage && patternUploadSuccessModal) {
-                    const fileText = result.count === 1 ? 'file' : 'files';
-                    patternUploadSuccessMessage.textContent = `Successfully uploaded ${result.count} pattern ${fileText}!`;
+                    patternUploadSuccessMessage.textContent = 'Successfully uploaded pattern file!';
                     patternUploadSuccessModal.classList.remove('is-hidden');
                 }
                 patternUploadButton.disabled = false;
@@ -8484,6 +8574,43 @@
                 patternUploadButton.disabled = false;
             }
         });
+    }
+
+    // Function to check if a pattern name already exists (case-insensitive)
+    async function checkDuplicatePatternName(patternName) {
+        if (!patternName || !patternName.trim()) {
+            return false;
+        }
+        
+        try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {};
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+
+            const response = await fetch(`${API_URL}/api/patterns`, {
+                method: 'GET',
+                headers: headers
+            });
+
+            if (!response.ok) {
+                console.error('Failed to load patterns for duplicate check:', response.status);
+                return false; // If we can't check, allow the upload
+            }
+
+            const patterns = await response.json();
+            const inputNameLower = patternName.trim().toLowerCase();
+            
+            // Check if any existing pattern has the same name (case-insensitive)
+            return patterns.some(pattern => {
+                const existingName = (pattern.name || '').trim().toLowerCase();
+                return existingName === inputNameLower;
+            });
+        } catch (error) {
+            console.error('Error checking duplicate pattern name:', error);
+            return false; // If there's an error, allow the upload
+        }
     }
 
     // Function to load and display pattern thumbnails in right panel
