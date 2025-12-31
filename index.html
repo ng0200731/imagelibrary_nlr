@@ -5200,7 +5200,17 @@
             empty.textContent = 'No tags';
             tagList.appendChild(empty);
         } else {
-            allTagSet.forEach(tagText => {
+            // Sort tags so pattern tags always appear last
+            const sortedTags = Array.from(allTagSet).sort((a, b) => {
+                const aIsPattern = a.toLowerCase().startsWith('pattern:');
+                const bIsPattern = b.toLowerCase().startsWith('pattern:');
+                // If both are pattern tags or both are not, maintain original order
+                if (aIsPattern === bIsPattern) return 0;
+                // Pattern tags go to the end (return 1 means a comes after b)
+                return aIsPattern ? 1 : -1;
+            });
+            
+            sortedTags.forEach(tagText => {
             const chip = document.createElement('span');
             chip.className = 'lightbox-tag-chip';
 
