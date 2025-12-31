@@ -3727,7 +3727,7 @@
         objChips.appendChild(chip);
     }
 
-    function autoFillMetadata() {
+    async function autoFillMetadata() {
         // Sample data arrays for random selection
         const sampleData = {
             books: ['Album-01', 'Collection-A', 'Stamps-2024', 'Vintage-Set', 'Modern-Series'],
@@ -3765,6 +3765,36 @@
         if (objRemarkInput) objRemarkInput.value = random(sampleData.remarks);
         if (objBrandInput) objBrandInput.value = random(sampleData.brands);
         if (objColorInput) objColorInput.value = random(sampleData.colors);
+
+        // Randomly select a pattern from available patterns
+        try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {};
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+
+            const response = await fetch(`${API_URL}/api/patterns`, {
+                method: 'GET',
+                headers: headers
+            });
+
+            if (response.ok) {
+                const patterns = await response.json();
+                if (patterns && patterns.length > 0) {
+                    // Randomly select a pattern
+                    const randomPattern = random(patterns);
+                    selectPattern(
+                        randomPattern.id,
+                        randomPattern.name || 'Unnamed Pattern',
+                        randomPattern.filepath
+                    );
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching patterns for auto-fill:', error);
+            // Continue even if pattern selection fails
+        }
 
         // Visual feedback
         autoFillBtn.textContent = 'Filled!';
