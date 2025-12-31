@@ -1,0 +1,60 @@
+================================================================================
+                    PATTERN UPLOAD DROP ZONE - REQUIREMENT
+================================================================================
+
+CURRENT STATE:
+┌─────────────────────────────────────────────────────────────────┐
+│  Upload Pattern                                                 │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │ Selected Patterns                                          │ │
+│  │ [Browse Files] [Clear All]                                │ │
+│  │                                                             │ │
+│  │ Browse, drag & drop, or paste pattern files                │ │
+│  │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐                          │ │
+│  │ │IMG1 │ │IMG2 │ │IMG3 │ │IMG4 │  <- Small fixed cards    │ │
+│  │ │150px│ │150px│ │150px│ │150px│     (150x150px)          │ │
+│  │ └─────┘ └─────┘ └─────┘ └─────┘     Images fit inside    │ │
+│  │                                                             │ │
+│  │ [Scrollable grid with many small thumbnails]             │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  Pattern Name: [________________]                               │
+│  [Upload]                                                       │
+└─────────────────────────────────────────────────────────────────┘
+
+REQUIRED STATE:
+┌─────────────────────────────────────────────────────────────────┐
+│  Upload Pattern                                                 │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │ Selected Patterns                                          │ │
+│  │ [Browse Files] [Clear All]                                │ │
+│  │                                                             │ │
+│  │ Browse, drag & drop, or paste pattern files                │ │
+│  │ ┌───────────────────────────────────────────────────────┐ │ │
+│  │ │                                                       │ │ │
+│  │ │         IMAGE FILLS FULL DROP ZONE AREA              │ │ │
+│  │ │         (Utilizes entire available space)           │ │ │
+│  │ │                                                       │ │ │
+│  │ │         Aspect Ratio: MAINTAINED ✓                   │ │ │
+│  │ │         (object-fit: contain)                        │ │ │
+│  │ │                                                       │ │ │
+│  │ │         Images scale to fill drop zone               │ │ │
+│  │ │         while keeping original proportions           │ │ │
+│  │ │                                                       │ │ │
+│  │ └───────────────────────────────────────────────────────┘ │ │
+│  │                                                             │ │
+│  │ [Full drop zone area utilized, images fill space]          │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  Pattern Name: [________________]                               │
+│  [Upload]                                                       │
+└─────────────────────────────────────────────────────────────────┘
+
+KEY REQUIREMENTS:
+✓ Images should utilize/fill the full drag & drop zone area
+✓ Keep aspect ratio (no distortion)
+✓ Images scale to maximum size within drop zone
+✓ Maintain object-fit: contain behavior
+
+================================================================================
+

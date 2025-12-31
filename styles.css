@@ -364,6 +364,78 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   max-height: none !important;
   overflow-y: auto;
   overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #000;
+  align-content: start;
+}
+
+/* Pattern preview cards - larger to utilize drop zone area */
+#pattern-preview-grid .preview-card {
+  width: 100%;
+  height: 0;
+  padding-bottom: 100%; /* Square aspect ratio */
+  position: relative;
+  border: 1px solid #000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f9f9f9;
+  box-sizing: border-box;
+}
+
+/* Pattern preview images - fill card while maintaining aspect ratio */
+#pattern-preview-grid .preview-card img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+
+/* Pattern preview file icons - center in card */
+#pattern-preview-grid .preview-card > div:first-child:not(.delete-btn) {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Delete button positioning for pattern preview cards */
+#pattern-preview-grid .preview-card .delete-btn {
+  position: absolute !important;
+  top: 4px !important;
+  right: 4px !important;
+  z-index: 10 !important;
+  background: #f00 !important;
+  color: #fff !important;
+  border: 0 !important;
+  padding: 4px 8px !important;
+  cursor: pointer !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+}
+
+/* When single image, make it larger */
+#pattern-preview-grid:has(.preview-card:only-child) {
+  grid-template-columns: 1fr;
+}
+
+#pattern-preview-grid:has(.preview-card:only-child) .preview-card {
+  padding-bottom: 75%; /* Wider aspect ratio for single image */
+  max-width: 100%;
 }
 
 .pattern-upload-left .upload-actions {
