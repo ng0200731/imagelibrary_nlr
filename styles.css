@@ -370,6 +370,36 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   flex-shrink: 0;
   padding: 8px;
   border-top: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pattern-name-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pattern-name-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #000;
+}
+
+.pattern-name-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #000;
+  font-size: 12px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.pattern-name-input:focus {
+  outline: none;
+  border-color: #000;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
 }
 
 .panel__title {
