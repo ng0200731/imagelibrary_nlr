@@ -723,6 +723,30 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 }
 
 /* Load buttons container */
+.results-separator {
+  grid-column: 1 / -1;
+  margin: 12px 0 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.results-separator--matched {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+  color: #155e75;
+}
+
+.results-separator--others {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
 .load-buttons-container {
   grid-column: 1 / -1;
   display: flex;

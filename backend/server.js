@@ -1011,11 +1011,12 @@ app.get('/images', (req, res) => {
                 if (patternMode) {
                     // Pattern mode: ONLY search pattern tags - completely ignore non-pattern tags
                     // Build conditions that ONLY check pattern tags containing search terms
+                    // Build LIKE conditions that ensure the pattern prefix and then the search term
                     tagsLower.forEach(searchTag => {
-                        // Only check pattern tags that contain the search term
-                        // Use pattern:%searchTag% to match tags like "pattern:twill" or "pattern:twill-fabric"
-                        likeConditions.push('(LOWER(t.name) LIKE \'pattern:%\' AND LOWER(t.name) LIKE ?)');
-                        likeParams.push(`%${searchTag}%`);  // Search for pattern tags containing the search term
+                        // Match only inside tags that BEGIN with "pattern:" and then contain the term somewhere after
+                        // e.g. pattern:%twill%
+                        likeConditions.push('LOWER(t.name) LIKE ?');
+                        likeParams.push(`pattern:%${searchTag}%`);
                     });
                     
                     const likePlaceholders = likeConditions.join(' OR ');
@@ -1027,7 +1028,7 @@ app.get('/images', (req, res) => {
                             SELECT DISTINCT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE LOWER(t.name) LIKE 'pattern:%' AND (${likePlaceholders})
+                            WHERE (${likePlaceholders})
                         `;
                         params = likeParams;
                     } else {
@@ -1035,7 +1036,7 @@ app.get('/images', (req, res) => {
                             SELECT DISTINCT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE i.ownership = ? AND LOWER(t.name) LIKE 'pattern:%' AND (${likePlaceholders})
+                            WHERE i.ownership = ? AND (${likePlaceholders})
                         `;
                         params = [userEmail, ...likeParams];
                     }

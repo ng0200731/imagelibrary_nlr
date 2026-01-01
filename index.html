@@ -2778,6 +2778,16 @@
             // First, display selected images at the front (in color, clickable)
             // Get selected images and sort them by chip order priority (first chip tag first)
             let selectedImagesData = loadedImages.filter(({ image }) => allSelectedImageIds.includes(image.id));
+
+            // Add a visual separator so users understand why "other" images appear behind matches.
+            // Only show in library view when search tags are active (not pool view).
+            const shouldShowMatchedHeader = !isPoolView && currentSearchTags.length > 0;
+            if (shouldShowMatchedHeader) {
+                const matchedHeader = document.createElement('div');
+                matchedHeader.className = 'results-separator results-separator--matched';
+                matchedHeader.textContent = `Matched (${selectedImagesData.length})`;
+                libraryGrid.appendChild(matchedHeader);
+            }
             
             // Sort by chip order if we have search tags
             if (currentSearchTags.length > 0) {
@@ -2837,6 +2847,18 @@
                 libraryGrid.appendChild(card);
                 cardsAdded++;
             });
+
+            // After rendering the matched block, disable search-chip highlighting for the rest of the library.
+            // "Other Images" should appear neutral (no outline), even if their tags contain the search terms.
+            chipsReferenceOnly = true;
+        }
+
+        // If we displayed matched images at the front, insert an "Other Images" header before the rest.
+        if (shouldShowSelectedAtFront && !isPoolView && currentSearchTags.length > 0) {
+            const otherHeader = document.createElement('div');
+            otherHeader.className = 'results-separator results-separator--others';
+            otherHeader.textContent = 'Other Images (manual selection allowed)';
+            libraryGrid.appendChild(otherHeader);
         }
 
         // Then display page images (skip images already shown at the front to avoid "chosen" duplicates)
@@ -3539,8 +3561,21 @@
                 console.log('[FRONTEND] Button state check - has is-active:', exactWordToggleBtn ? exactWordToggleBtn.classList.contains('is-active') : 'button not found');
                 console.log('[FRONTEND] Using matchMode:', matchMode, 'for search');
 
-                const apiUrl = `${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}${patternParam}`;
-                const patternApiUrl = `${API_URL}/api/patterns/search?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}`;
+                // When patternMode is ON, the backend expects plain search terms like "twill,ca"
+                // and will search ONLY pattern:* tags.
+                // So we must NOT prefix them with "pattern:" here.
+                const patternSearchTags = currentSearchTags.map(tag => {
+                    const tagStr = String(tag).trim();
+                    const lower = tagStr.toLowerCase();
+                    if (lower.startsWith('pattern:')) {
+                        const idx = tagStr.indexOf(':');
+                        return idx >= 0 ? tagStr.slice(idx + 1).trim() : tagStr;
+                    }
+                    return tagStr;
+                }).filter(Boolean);
+
+                const apiUrl = `${API_URL}/images?tags=${encodeURIComponent(patternSearchTags.join(','))}&mode=${searchMode}&match=${matchMode}${patternParam}`;
+                const patternApiUrl = `${API_URL}/api/patterns/search?tags=${encodeURIComponent(patternSearchTags.join(','))}&mode=${searchMode}&match=${matchMode}`;
                 console.log('[FRONTEND] API URL:', apiUrl);
                 console.log('[FRONTEND] Pattern API URL:', patternApiUrl);
                 console.log('[FRONTEND] Request parameters - tags:', currentSearchTags, 'mode:', searchMode, 'match:', matchMode);
@@ -3635,53 +3670,25 @@
 
                 // AND & OR: always show matching images first, then all non-matching images.
                 // Difference between AND/OR is only which images backend returns as "matching".
+                // IMPORTANT: Even when patternMode is ON, we still append non-matching images behind matching ones.
                 const matchingIds = new Set(tagMatchingImages.map(img => img.id));
-                
-                // When pattern mode is active, ONLY show matching images (don't show non-matching images)
-                let nonMatchingImages = []; // Declare outside if-else for scope
-                
+
+                // Keep tagSelectedImages representing ONLY the backend-matching set.
+                // (Non-matching images should not appear selected by search.)
+                tagSelectedImages = tagMatchingImages.map(img => img.id);
+
+                const nonMatchingImages = allImages
+                    .filter(img => !matchingIds.has(img.id))
+                    .sort((a, b) => b.id - a.id);
+
+                imagesToDisplay = [...orderedMatches, ...nonMatchingImages];
+
                 if (patternMode) {
-                    // Pattern mode: Only show images that match pattern tags
-                    imagesToDisplay = orderedMatches;
-                    // CRITICAL: When pattern mode is active, only images in tagMatchingImages should be in tagSelectedImages
-                    // This ensures that non-matching images (like Image 207) are not marked as selected
-                    tagSelectedImages = tagMatchingImages.map(img => img.id);
-                    
-                    // SAFETY CHECK: Explicitly remove Image 207 if it somehow got in
-                    imagesToDisplay = imagesToDisplay.filter(img => {
-                        if (img.id === 207) {
-                            console.warn('[FRONTEND] Pattern mode ON - Removing Image 207 from display (should not be here!)');
-                            return false;
-                        }
-                        return true;
-                    });
-                    // Also ensure Image 207 is not in tagSelectedImages
-                    tagSelectedImages = tagSelectedImages.filter(id => {
-                        if (id === 207) {
-                            console.warn('[FRONTEND] Pattern mode ON - Removing Image 207 from tagSelectedImages (should not be here!)');
-                            return false;
-                        }
-                        return true;
-                    });
-                    
-                    console.log('[FRONTEND] Pattern mode ON - Only showing matching images:', imagesToDisplay.length);
-                    console.log('[FRONTEND] Pattern mode ON - tagSelectedImages updated to:', tagSelectedImages);
-                    console.log('[FRONTEND] Pattern mode ON - Library view: Only showing matching images:', imagesToDisplay.length);
-                    console.log('[FRONTEND] Pattern mode ON - tagSelectedImages:', tagSelectedImages);
-                    console.log('[FRONTEND] Pattern mode ON - Image 207 in tagSelectedImages?', tagSelectedImages.includes(207));
-                    console.log('[FRONTEND] Pattern mode ON - Image 207 in imagesToDisplay?', imagesToDisplay.some(img => img.id === 207));
+                    console.log('Library view with search tags - PATTERN mode: matching first, then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                } else if (searchMode === 'AND') {
+                    console.log('Library view with search tags - AND mode: matching first, then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
                 } else {
-                    // Normal mode: Show matching images first, then all non-matching images
-                    nonMatchingImages = allImages
-                        .filter(img => !matchingIds.has(img.id))
-                        .sort((a, b) => b.id - a.id);
-                    imagesToDisplay = [...orderedMatches, ...nonMatchingImages];
-                    
-                    if (searchMode === 'AND') {
-                        console.log('Library view with search tags - AND mode: matching (red AND text), then all NOT (red AND text). Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
-                    } else {
-                        console.log('Library view with search tags - OR mode: matching first (by chip order), then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
-                    }
+                    console.log('Library view with search tags - OR mode: matching first (by chip order), then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
                 }
             }
 
