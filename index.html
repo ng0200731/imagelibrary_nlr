@@ -2772,8 +2772,62 @@
         
         if (shouldShowSelectedAtFront) {
             // First, display selected images at the front (in color, clickable)
-            // Get selected images in their original order from loadedImages
-            const selectedImagesData = loadedImages.filter(({ image }) => allSelectedImageIds.includes(image.id));
+            // Get selected images and sort them by chip order priority (first chip tag first)
+            let selectedImagesData = loadedImages.filter(({ image }) => allSelectedImageIds.includes(image.id));
+            
+            // Sort by chip order if we have search tags
+            if (currentSearchTags.length > 0) {
+                const chipContainer = document.getElementById('library-search-chips');
+                let chipTagsInOrder = [];
+                if (chipContainer) {
+                    chipTagsInOrder = Array.from(chipContainer.querySelectorAll('.search-chip'))
+                        .map(chip => (chip.dataset.tag || '').toLowerCase())
+                        .filter(tag => tag);
+                }
+                
+                if (chipTagsInOrder.length > 0) {
+                    // Helper: does image match a search tag (respecting exact/partial)
+                    const imageMatchesTag = (imgTags, searchTag) => {
+                        const searchLower = searchTag.toLowerCase();
+                        if (!searchLower) return false;
+                        return imgTags.some(imageTag => {
+                            const tagLower = imageTag.toLowerCase();
+                            return exactWordMode ? (tagLower === searchLower) : tagLower.includes(searchLower);
+                        });
+                    };
+                    
+                    // Create priority buckets for each chip tag
+                    const priorityBuckets = [];
+                    chipTagsInOrder.forEach(tag => priorityBuckets.push({ tag, images: [] }));
+                    const remainingSelected = [];
+                    
+                    selectedImagesData.forEach((item) => {
+                        const { image } = item;
+                        const imgTags = (image.tags || []).map(t => t.toLowerCase());
+                        let placed = false;
+                        for (let i = 0; i < chipTagsInOrder.length; i++) {
+                            if (imageMatchesTag(imgTags, chipTagsInOrder[i])) {
+                                priorityBuckets[i].images.push(item);
+                                placed = true;
+                                break;
+                            }
+                        }
+                        if (!placed) {
+                            remainingSelected.push(item);
+                        }
+                    });
+                    
+                    // Sort each bucket by ID desc, then flatten in chip order
+                    priorityBuckets.forEach(bucket => bucket.images.sort((a, b) => b.image.id - a.image.id));
+                    remainingSelected.sort((a, b) => b.image.id - a.image.id);
+                    
+                    selectedImagesData = [
+                        ...priorityBuckets.flatMap(b => b.images),
+                        ...remainingSelected
+                    ];
+                }
+            }
+            
             selectedImagesData.forEach(({ image, index, imageSrc }) => {
                 const card = createImageCard(image, index, imageSrc, currentSearchTags, false);
                 libraryGrid.appendChild(card);
@@ -6086,10 +6140,20 @@
                         const img = allImages.find(i => i.id === imgId);
                         return img !== undefined;
                     });
-                    // OR mode: tag-selected images should already be correct from API, but verify they exist
+                    // OR mode: verify tag-selected images match at least one search tag (respecting exactWordMode)
                     validTagSelections = tagSelectedImages.filter(imgId => {
                         const img = allImages.find(i => i.id === imgId);
-                        return img !== undefined;
+                        if (!img) return false;
+                        const imageTags = (img.tags || []).map(t => t.toLowerCase());
+                        if (exactWordMode) {
+                            // Exact word mode: image must have at least one tag that exactly matches a search tag
+                            return currentTagsLower.some(tag => imageTags.includes(tag));
+                        } else {
+                            // Partial mode: image must have at least one tag that contains a search tag as substring
+                            return currentTagsLower.some(tag =>
+                                imageTags.some(imageTag => imageTag.includes(tag))
+                            );
+                        }
                     });
                     
                     console.log('[FRONTEND] OR mode - validManualSelections:', validManualSelections, 'validTagSelections:', validTagSelections);

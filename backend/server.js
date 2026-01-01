@@ -1101,6 +1101,33 @@ app.get('/images', (req, res) => {
 
                 return matchesAll;
             });
+        } else if (mode.toUpperCase() === 'OR' && tags.length > 0 && isPartialMatch) {
+            // For OR mode with partial matching, verify each image matches at least one search tag
+            // This ensures images actually match the search criteria (same logic as frontend)
+            imagesWithTags = imagesWithTags.filter(image => {
+                // Get all image tags (including pattern: tags, but excluding other metadata tags)
+                const allImageTags = image.tags || [];
+                // Keep pattern: tags and subjective tags, but exclude other metadata tags
+                const objectivePrefixes = ['book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'width:', 'length:', 'remark:', 'brand:', 'color:'];
+                const searchableTags = allImageTags.filter(t => {
+                    const tagLower = t.toLowerCase();
+                    // Include pattern: tags and tags without colons (subjective tags)
+                    return tagLower.startsWith('pattern:') || (!tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix)));
+                });
+                const imageTagsLower = searchableTags.map(t => t.toLowerCase());
+
+                // Check if image matches at least one original tag using SAME logic as frontend hover
+                // Frontend uses: tagLower.includes(searchLower) for partial mode
+                const matchesAtLeastOne = tags.some(originalTag => {
+                    const searchLower = originalTag.toLowerCase();
+                    if (!searchLower) return false;
+                    
+                    // Partial match: check if any image tag contains the search tag
+                    return imageTagsLower.some(imageTag => imageTag.includes(searchLower));
+                });
+
+                return matchesAtLeastOne;
+            });
         }
 
         res.json(imagesWithTags);
