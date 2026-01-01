@@ -83,6 +83,7 @@
               <button id="clear-all-tags" class="button clear-tags-btn" type="button">Clear All</button>
               <button id="tag-mode-toggle" class="button tag-mode-toggle-btn" type="button">OR</button>
               <button id="exact-word-toggle" class="button exact-word-toggle-btn" type="button">EXACT WORD</button>
+              <button id="pattern-toggle" class="button pattern-toggle-btn" type="button">pattern</button>
             </div>
             <div id="library-search-chips" class="chips search-chips"></div>
             <button id="update-tag-btn" class="button update-tag-btn is-hidden" type="button">Mass Update Tag</button>
@@ -1056,11 +1057,14 @@
     const clearAllTagsBtn = document.getElementById('clear-all-tags');
     const tagModeToggleBtn = document.getElementById('tag-mode-toggle');
     const exactWordToggleBtn = document.getElementById('exact-word-toggle');
+    const patternToggleBtn = document.getElementById('pattern-toggle');
     
     // Tag search mode: 'OR' (default) or 'AND'
     let tagSearchMode = 'OR';
     // Tag match mode: exact word or partial/substring (default: partial for better search experience)
     let exactWordMode = false;
+    // Pattern mode: when active, only search pattern tags (default: false)
+    let patternMode = false;
 
     // Selection and project elements
     const selectionControls = document.getElementById('selection-controls');
@@ -3339,7 +3343,8 @@
             const allImagesResponse = await fetch(`${API_URL}/images`, {
                 headers: headers
             });
-            const allImages = await allImagesResponse.json();
+            const allImagesData = await allImagesResponse.json();
+            const allImages = Array.isArray(allImagesData) ? allImagesData : allImagesData.images || [];
 
 
             let imagesToDisplay = [];
@@ -3376,6 +3381,15 @@
                     }
                 }
 
+                // Sync patternMode with button state before searching
+                if (patternToggleBtn) {
+                    const patternButtonIsActive = patternToggleBtn.classList.contains('is-active');
+                    if (patternMode !== patternButtonIsActive) {
+                        console.warn('[FRONTEND POOL] patternMode variable out of sync with button! Variable:', patternMode, 'Button:', patternButtonIsActive, '- syncing...');
+                        patternMode = patternButtonIsActive;
+                    }
+                }
+
                 // First, process the search tags to get tag-matching images
                 console.log('Fetching tag-matching images for tags:', currentSearchTags);
                 const sessionToken = localStorage.getItem('sessionToken');
@@ -3384,8 +3398,9 @@
                     headers['Authorization'] = `Bearer ${sessionToken}`;
                 }
                 const matchMode = exactWordMode ? 'exact' : 'partial';
-                console.log('[FRONTEND POOL] Searching with tags:', currentSearchTags, 'mode:', searchMode, 'matchMode:', matchMode, 'exactWordMode:', exactWordMode);
-                const tagResponse = await fetch(`${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}`, {
+                const patternParam = patternMode ? '&pattern=1' : '';
+                console.log('[FRONTEND POOL] Searching with tags:', currentSearchTags, 'mode:', searchMode, 'matchMode:', matchMode, 'exactWordMode:', exactWordMode, 'patternMode:', patternMode);
+                const tagResponse = await fetch(`${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}${patternParam}`, {
                     headers: headers
                 });
 
@@ -3393,7 +3408,22 @@
                     throw new Error(`Tag search failed: ${tagResponse.status} ${tagResponse.statusText}`);
                 }
 
-                const tagMatchingImages = await tagResponse.json();
+                const tagResponseData = await tagResponse.json();
+                // Handle both array response and object with debug info
+                const tagMatchingImages = Array.isArray(tagResponseData) ? tagResponseData : tagResponseData.images || [];
+                
+                // Show debug info in browser console if available
+                if (tagResponseData.debug) {
+                    console.log('[BROWSER DEBUG] Pattern mode:', tagResponseData.debug.patternMode);
+                    console.log('[BROWSER DEBUG] Search tags:', tagResponseData.debug.searchTags);
+                    console.log('[BROWSER DEBUG] Total images:', tagResponseData.debug.totalImages);
+                    console.log('[BROWSER DEBUG] Image 207 in results:', tagResponseData.debug.image207InResults);
+                    if (tagResponseData.debug.image207Info) {
+                        console.log('[BROWSER DEBUG] Image 207 info:', tagResponseData.debug.image207Info);
+                        console.log('[BROWSER DEBUG] Image 207 should be removed:', tagResponseData.debug.image207Info.shouldBeRemoved);
+                    }
+                }
+                
                 console.log('Tag-matching images found:', tagMatchingImages.length);
 
                 // Update tag-selected images (add new ones, keep existing ones)
@@ -3503,12 +3533,13 @@
                 //   true  -> match=exact   (full word)
                 //   false -> match=partial (substring, e.g. "ost" matches "ghost spider")
                 const matchMode = exactWordMode ? 'exact' : 'partial';
+                const patternParam = patternMode ? '&pattern=1' : '';
 
-                console.log('[FRONTEND] Searching with tags:', currentSearchTags, 'mode:', searchMode, 'matchMode:', matchMode, 'exactWordMode:', exactWordMode);
+                console.log('[FRONTEND] Searching with tags:', currentSearchTags, 'mode:', searchMode, 'matchMode:', matchMode, 'exactWordMode:', exactWordMode, 'patternMode:', patternMode);
                 console.log('[FRONTEND] Button state check - has is-active:', exactWordToggleBtn ? exactWordToggleBtn.classList.contains('is-active') : 'button not found');
                 console.log('[FRONTEND] Using matchMode:', matchMode, 'for search');
 
-                const apiUrl = `${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}`;
+                const apiUrl = `${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}${patternParam}`;
                 const patternApiUrl = `${API_URL}/api/patterns/search?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}`;
                 console.log('[FRONTEND] API URL:', apiUrl);
                 console.log('[FRONTEND] Pattern API URL:', patternApiUrl);
@@ -3524,7 +3555,17 @@
                     throw new Error(`Tag search failed: ${tagResponse.status} ${tagResponse.statusText}`);
                 }
 
-                const tagMatchingImages = await tagResponse.json();
+                const tagResponseData2 = await tagResponse.json();
+                const tagMatchingImages = Array.isArray(tagResponseData2) ? tagResponseData2 : tagResponseData2.images || [];
+                
+                // Show debug info in browser if available
+                if (tagResponseData2.debug) {
+                    console.log('[BROWSER DEBUG] Pattern mode:', tagResponseData2.debug.patternMode);
+                    console.log('[BROWSER DEBUG] Image 207 in results:', tagResponseData2.debug.image207InResults);
+                    if (tagResponseData2.debug.image207Info) {
+                        console.log('[BROWSER DEBUG] Image 207 should be removed:', tagResponseData2.debug.image207Info.shouldBeRemoved);
+                    }
+                }
                 let tagMatchingPatterns = [];
                 
                 if (patternResponse.ok) {
@@ -3595,16 +3636,52 @@
                 // AND & OR: always show matching images first, then all non-matching images.
                 // Difference between AND/OR is only which images backend returns as "matching".
                 const matchingIds = new Set(tagMatchingImages.map(img => img.id));
-                const nonMatchingImages = allImages
-                    .filter(img => !matchingIds.has(img.id))
-                    .sort((a, b) => b.id - a.id);
-
-                imagesToDisplay = [...orderedMatches, ...nonMatchingImages];
-
-                if (searchMode === 'AND') {
-                    console.log('Library view with search tags - AND mode: matching (red AND text), then all NOT (red AND text). Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                
+                // When pattern mode is active, ONLY show matching images (don't show non-matching images)
+                let nonMatchingImages = []; // Declare outside if-else for scope
+                
+                if (patternMode) {
+                    // Pattern mode: Only show images that match pattern tags
+                    imagesToDisplay = orderedMatches;
+                    // CRITICAL: When pattern mode is active, only images in tagMatchingImages should be in tagSelectedImages
+                    // This ensures that non-matching images (like Image 207) are not marked as selected
+                    tagSelectedImages = tagMatchingImages.map(img => img.id);
+                    
+                    // SAFETY CHECK: Explicitly remove Image 207 if it somehow got in
+                    imagesToDisplay = imagesToDisplay.filter(img => {
+                        if (img.id === 207) {
+                            console.warn('[FRONTEND] Pattern mode ON - Removing Image 207 from display (should not be here!)');
+                            return false;
+                        }
+                        return true;
+                    });
+                    // Also ensure Image 207 is not in tagSelectedImages
+                    tagSelectedImages = tagSelectedImages.filter(id => {
+                        if (id === 207) {
+                            console.warn('[FRONTEND] Pattern mode ON - Removing Image 207 from tagSelectedImages (should not be here!)');
+                            return false;
+                        }
+                        return true;
+                    });
+                    
+                    console.log('[FRONTEND] Pattern mode ON - Only showing matching images:', imagesToDisplay.length);
+                    console.log('[FRONTEND] Pattern mode ON - tagSelectedImages updated to:', tagSelectedImages);
+                    console.log('[FRONTEND] Pattern mode ON - Library view: Only showing matching images:', imagesToDisplay.length);
+                    console.log('[FRONTEND] Pattern mode ON - tagSelectedImages:', tagSelectedImages);
+                    console.log('[FRONTEND] Pattern mode ON - Image 207 in tagSelectedImages?', tagSelectedImages.includes(207));
+                    console.log('[FRONTEND] Pattern mode ON - Image 207 in imagesToDisplay?', imagesToDisplay.some(img => img.id === 207));
                 } else {
-                    console.log('Library view with search tags - OR mode: matching first (by chip order), then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                    // Normal mode: Show matching images first, then all non-matching images
+                    nonMatchingImages = allImages
+                        .filter(img => !matchingIds.has(img.id))
+                        .sort((a, b) => b.id - a.id);
+                    imagesToDisplay = [...orderedMatches, ...nonMatchingImages];
+                    
+                    if (searchMode === 'AND') {
+                        console.log('Library view with search tags - AND mode: matching (red AND text), then all NOT (red AND text). Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                    } else {
+                        console.log('Library view with search tags - OR mode: matching first (by chip order), then non-matching. Matching:', orderedMatches.length, 'Non-matching:', nonMatchingImages.length, 'Total:', imagesToDisplay.length);
+                    }
                 }
             }
 
@@ -10960,6 +11037,68 @@
 
     // Initialize exact word button state (default: inactive / partial matches)
     updateExactWordButtonState();
+
+    // Pattern toggle button (pattern tag filtering)
+    function updatePatternButtonState() {
+        if (!patternToggleBtn) return;
+        if (patternMode) {
+            patternToggleBtn.classList.add('is-active');
+            patternToggleBtn.title = 'Pattern mode is ON (only search pattern tags)';
+        } else {
+            patternToggleBtn.classList.remove('is-active');
+            patternToggleBtn.title = 'Pattern mode is OFF (search all tags)';
+        }
+    }
+
+    if (patternToggleBtn) {
+        patternToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Toggle the mode
+            const oldMode = patternMode;
+            patternMode = !patternMode;
+            console.log('=== PATTERN BUTTON CLICKED ===');
+            console.log('patternMode changed from:', oldMode ? 'ON' : 'OFF', 'to:', patternMode ? 'ON' : 'OFF');
+            
+            // Update button visual state
+            updatePatternButtonState();
+            const buttonNowActive = patternToggleBtn.classList.contains('is-active');
+            console.log('After updatePatternButtonState - Button has is-active class:', buttonNowActive);
+            console.log('patternMode variable is now:', patternMode);
+            
+            // Verify they're in sync
+            if (patternMode !== buttonNowActive) {
+                console.error('SYNC ERROR: patternMode (', patternMode, ') does not match button state (', buttonNowActive, ')');
+                updatePatternButtonState();
+            }
+            console.log('=== END PATTERN BUTTON CLICK ===');
+
+            // Refresh display if there are search tags
+            if (searchTags.length > 0 || isPoolView) {
+                console.log('Refreshing display with new patternMode:', patternMode);
+                // Clear selectedImages when pattern mode changes
+                const previousSelectedCount = selectedImages.length;
+                selectedImages = [];
+                console.log('Cleared', previousSelectedCount, 'selected images due to pattern mode change');
+                // Use a small delay to ensure button state is fully updated
+                setTimeout(() => {
+                    displayLibraryImages().then(() => {
+                        console.log('Display refreshed successfully with patternMode:', patternMode);
+                        updateSelectionState();
+                    }).catch(error => {
+                        console.error('Error refreshing display after pattern toggle:', error);
+                        updateSelectionState();
+                    });
+                }, 10);
+            } else {
+                updateSelectionState();
+            }
+        });
+    }
+
+    // Initialize pattern button state (default: inactive)
+    updatePatternButtonState();
 
     // Initialize button state
     updateClearButtonState();

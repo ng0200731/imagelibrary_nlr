@@ -1717,6 +1717,46 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   color: #fff !important;
 }
 
+/* Pattern toggle button styling (same as exact-word-toggle-btn) */
+.pattern-toggle-btn {
+  padding: 8px 16px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+}
+
+.pattern-toggle-btn:not(.is-active) {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+.pattern-toggle-btn:not(.is-active):focus {
+  background: #fff !important;
+  color: #000 !important;
+  outline: 1px dotted #000;
+  outline-offset: 1px;
+}
+
+.pattern-toggle-btn:not(.is-active):hover {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+.pattern-toggle-btn.is-active {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+.pattern-toggle-btn.is-active:hover,
+.pattern-toggle-btn.is-active:focus {
+  background: #000 !important;
+  color: #fff !important;
+}
+
 .update-tag-btn {
   background: #4CAF50;
   color: white;

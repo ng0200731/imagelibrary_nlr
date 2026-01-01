@@ -869,8 +869,9 @@ app.get('/images', (req, res) => {
     const mode = req.query.mode || 'OR';
     const match = (req.query.match || 'exact').toLowerCase();
     const isPartialMatch = match === 'partial';
+    const patternMode = req.query.pattern === '1';
 
-    console.log('[SEARCH] Tags:', tags, 'Mode:', mode, 'Match:', match, 'isPartialMatch:', isPartialMatch);
+    console.log('[SEARCH] Tags:', tags, 'Mode:', mode, 'Match:', match, 'isPartialMatch:', isPartialMatch, 'patternMode:', patternMode);
 
     // Extract tag names from tags with colons
     // For "pattern:twill": search for images with tag "pattern:twill" (stored as tag) AND images with tag "twill"
@@ -954,6 +955,9 @@ app.get('/images', (req, res) => {
                 // EXACT match behavior
                 // expandedTags already includes both "twill" and "pattern:twill" when searching for "twill"
                 // So we just search for tags IN expandedTags (no need to double-add pattern: prefix)
+                // But if pattern mode is active, we need to filter to only pattern tags
+                const patternFilter = patternMode ? " AND LOWER(t.name) LIKE 'pattern:%'" : "";
+                
                 if (upperMode === 'AND') {
                     // For AND mode, we need to ensure the image matches all original tags
                     // Since we expanded tags (e.g., "pattern:twill" -> "twill"), we'll post-filter
@@ -962,7 +966,7 @@ app.get('/images', (req, res) => {
                             SELECT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE t.name IN (${placeholders})
+                            WHERE t.name IN (${placeholders})${patternFilter}
                             GROUP BY i.id
                         `;
                         params = expandedTags;
@@ -971,7 +975,7 @@ app.get('/images', (req, res) => {
                             SELECT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE i.ownership = ? AND t.name IN (${placeholders})
+                            WHERE i.ownership = ? AND t.name IN (${placeholders})${patternFilter}
                             GROUP BY i.id
                         `;
                         params = [userEmail, ...expandedTags];
@@ -982,7 +986,7 @@ app.get('/images', (req, res) => {
                             SELECT DISTINCT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE t.name IN (${placeholders})
+                            WHERE t.name IN (${placeholders})${patternFilter}
                         `;
                         params = expandedTags;
                     } else {
@@ -990,7 +994,7 @@ app.get('/images', (req, res) => {
                             SELECT DISTINCT i.* FROM images i
                             JOIN image_tags it ON i.id = it.image_id
                             JOIN tags t ON it.tag_id = t.id
-                            WHERE i.ownership = ? AND t.name IN (${placeholders})
+                            WHERE i.ownership = ? AND t.name IN (${placeholders})${patternFilter}
                         `;
                         params = [userEmail, ...expandedTags];
                     }
@@ -1004,39 +1008,157 @@ app.get('/images', (req, res) => {
                 const likeConditions = [];
                 const likeParams = [];
                 
-                tagsLower.forEach(searchTag => {
-                    // For each search tag, find tags that contain it (same as frontend: tag.includes(searchTag))
-                    likeConditions.push('LOWER(t.name) LIKE ?');
-                    likeParams.push(`%${searchTag}%`);
-                });
-                
-                const likePlaceholders = likeConditions.join(' OR ');
+                if (patternMode) {
+                    // Pattern mode: ONLY search pattern tags - completely ignore non-pattern tags
+                    // Build conditions that ONLY check pattern tags containing search terms
+                    tagsLower.forEach(searchTag => {
+                        // Only check pattern tags that contain the search term
+                        // Use pattern:%searchTag% to match tags like "pattern:twill" or "pattern:twill-fabric"
+                        likeConditions.push('(LOWER(t.name) LIKE \'pattern:%\' AND LOWER(t.name) LIKE ?)');
+                        likeParams.push(`%${searchTag}%`);  // Search for pattern tags containing the search term
+                    });
+                    
+                    const likePlaceholders = likeConditions.join(' OR ');
+                    console.log('[SEARCH] Pattern mode ON - Partial match - tagsLower:', tagsLower, 'likeParams:', likeParams);
+                    console.log('[SEARCH] Pattern mode ON - SQL WHERE clause (pattern tags only):', likePlaceholders);
 
-                console.log('[SEARCH] Partial match - tagsLower:', tagsLower, 'likeParams:', likeParams);
-
-                if (userLevel === 3) {
-                    query = `
-                        SELECT DISTINCT i.* FROM images i
-                        JOIN image_tags it ON i.id = it.image_id
-                        JOIN tags t ON it.tag_id = t.id
-                        WHERE (${likePlaceholders})
-                    `;
-                    params = likeParams;
+                    if (userLevel === 3) {
+                        query = `
+                            SELECT DISTINCT i.* FROM images i
+                            JOIN image_tags it ON i.id = it.image_id
+                            JOIN tags t ON it.tag_id = t.id
+                            WHERE LOWER(t.name) LIKE 'pattern:%' AND (${likePlaceholders})
+                        `;
+                        params = likeParams;
+                    } else {
+                        query = `
+                            SELECT DISTINCT i.* FROM images i
+                            JOIN image_tags it ON i.id = it.image_id
+                            JOIN tags t ON it.tag_id = t.id
+                            WHERE i.ownership = ? AND LOWER(t.name) LIKE 'pattern:%' AND (${likePlaceholders})
+                        `;
+                        params = [userEmail, ...likeParams];
+                    }
                 } else {
-                    query = `
-                        SELECT DISTINCT i.* FROM images i
-                        JOIN image_tags it ON i.id = it.image_id
-                        JOIN tags t ON it.tag_id = t.id
-                        WHERE i.ownership = ? AND (${likePlaceholders})
-                    `;
-                    params = [userEmail, ...likeParams];
+                    // Normal mode: search all tags (both pattern and non-pattern)
+                    tagsLower.forEach(searchTag => {
+                        likeConditions.push('LOWER(t.name) LIKE ?');
+                        likeParams.push(`%${searchTag}%`);
+                    });
+                    
+                    const likePlaceholders = likeConditions.join(' OR ');
+                    console.log('[SEARCH] Normal mode - Partial match - tagsLower:', tagsLower, 'likeParams:', likeParams);
+                    console.log('[SEARCH] Normal mode - SQL WHERE clause (all tags):', likePlaceholders);
+
+                    if (userLevel === 3) {
+                        query = `
+                            SELECT DISTINCT i.* FROM images i
+                            JOIN image_tags it ON i.id = it.image_id
+                            JOIN tags t ON it.tag_id = t.id
+                            WHERE (${likePlaceholders})
+                        `;
+                        params = likeParams;
+                    } else {
+                        query = `
+                            SELECT DISTINCT i.* FROM images i
+                            JOIN image_tags it ON i.id = it.image_id
+                            JOIN tags t ON it.tag_id = t.id
+                            WHERE i.ownership = ? AND (${likePlaceholders})
+                        `;
+                        params = [userEmail, ...likeParams];
+                    }
                 }
             }
 
+            console.log('[SEARCH] === SQL QUERY EXECUTION ===');
             console.log('[SEARCH] Query:', query);
             console.log('[SEARCH] Params:', params);
+            
+            // Build full SQL string for debugging
+            let fullSql = query;
+            let paramIndex = 0;
+            while (fullSql.includes('?')) {
+                if (paramIndex < params.length) {
+                    fullSql = fullSql.replace('?', `'${params[paramIndex]}'`);
+                    paramIndex++;
+                } else {
+                    break;
+                }
+            }
+            console.log('[SEARCH] Full SQL with params:', fullSql);
+            console.log('[SEARCH] Pattern mode:', patternMode, '| Mode:', mode, '| Partial match:', isPartialMatch);
+            
             images = db.prepare(query).all(params);
-            console.log('[SEARCH] Found', images.length, 'images');
+            console.log('[SEARCH] Found', images.length, 'images from SQL query');
+            console.log('[SEARCH] Image IDs returned by SQL:', images.map(img => img.id));
+            
+            // If pattern mode is ON, verify each returned image has matching pattern tags
+            if (patternMode && images.length > 0) {
+                console.log('[SEARCH] === VERIFYING PATTERN MODE RESULTS ===');
+                const getImageTagsForVerify = db.prepare(`
+                    SELECT t.name FROM tags t
+                    JOIN image_tags it ON t.id = it.tag_id
+                    WHERE it.image_id = ?
+                `);
+                
+                images.forEach(img => {
+                    const imgTags = getImageTagsForVerify.all(img.id).map(row => row.name);
+                    const patternTags = imgTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                    console.log(`[SEARCH] Image ${img.id} - All tags:`, imgTags);
+                    console.log(`[SEARCH] Image ${img.id} - Pattern tags only:`, patternTags);
+                    
+                    // Check if pattern tags match search
+                    tags.forEach(searchTag => {
+                        const searchLower = searchTag.toLowerCase();
+                        const matchingPatternTags = patternTags.filter(pt => pt.toLowerCase().includes(`pattern:${searchLower}`) || pt.toLowerCase().includes(searchLower));
+                        if (matchingPatternTags.length > 0) {
+                            console.log(`[SEARCH] Image ${img.id} - Matched "${searchTag}" in pattern tags:`, matchingPatternTags);
+                        } else {
+                            console.log(`[SEARCH] Image ${img.id} - ⚠️ DID NOT match "${searchTag}" in pattern tags! This image should NOT be returned!`);
+                        }
+                    });
+                });
+                console.log('[SEARCH] === END VERIFICATION ===');
+            }
+            
+            // Debug: Show why each image was selected by SQL
+            if (images.length > 0) {
+                console.log('[SEARCH] === SQL QUERY RESULTS ===');
+                const getImageTagsForDebug = db.prepare(`
+                    SELECT t.name FROM tags t
+                    JOIN image_tags it ON t.id = it.tag_id
+                    WHERE it.image_id = ?
+                `);
+                
+                images.forEach(img => {
+                    const imgTags = getImageTagsForDebug.all(img.id).map(row => row.name);
+                    console.log(`[SEARCH] Image ID ${img.id} selected by SQL - Tags:`, imgTags);
+                    if (patternMode) {
+                        const patternTags = imgTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                        const nonPatternTags = imgTags.filter(t => !t.toLowerCase().startsWith('pattern:'));
+                        console.log(`[SEARCH]   - Pattern tags:`, patternTags);
+                        console.log(`[SEARCH]   - Non-pattern tags:`, nonPatternTags);
+                        tags.forEach(searchTag => {
+                            const searchLower = searchTag.toLowerCase();
+                            const matchingPatternTags = patternTags.filter(pt => pt.toLowerCase().includes(searchLower));
+                            if (matchingPatternTags.length > 0) {
+                                console.log(`[SEARCH]   - Matched "${searchTag}" in pattern tags:`, matchingPatternTags);
+                            } else {
+                                console.log(`[SEARCH]   - Did NOT match "${searchTag}" in pattern tags`);
+                            }
+                        });
+                    } else {
+                        tags.forEach(searchTag => {
+                            const searchLower = searchTag.toLowerCase();
+                            const matchingTags = imgTags.filter(t => t.toLowerCase().includes(searchLower));
+                            if (matchingTags.length > 0) {
+                                console.log(`[SEARCH]   - Matched "${searchTag}" in tags:`, matchingTags);
+                            }
+                        });
+                    }
+                });
+                console.log('[SEARCH] === END SQL QUERY RESULTS ===');
+            }
         }
 
         // Get tags for each image
@@ -1048,9 +1170,11 @@ app.get('/images', (req, res) => {
 
         let imagesWithTags = images.map(image => {
             const imageTags = getImageTags.all(image.id);
+            const tagNames = imageTags.map(tag => tag.name);
+            console.log(`[SEARCH] Image ${image.id} tags loaded:`, tagNames);
             return {
                 ...image,
-                tags: imageTags.map(tag => tag.name)
+                tags: tagNames
             };
         });
 
@@ -1062,11 +1186,24 @@ app.get('/images', (req, res) => {
                 const allImageTags = image.tags || [];
                 // Keep pattern: tags and subjective tags, but exclude other metadata tags
                 const objectivePrefixes = ['book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'width:', 'length:', 'remark:', 'brand:', 'color:'];
-                const searchableTags = allImageTags.filter(t => {
+                let searchableTags = allImageTags.filter(t => {
                     const tagLower = t.toLowerCase();
                     // Include pattern: tags and tags without colons (subjective tags)
                     return tagLower.startsWith('pattern:') || (!tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix)));
                 });
+                
+                // If pattern mode is active, only check pattern tags
+                if (patternMode) {
+                    const beforeFilter = searchableTags.length;
+                    searchableTags = searchableTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                    const afterFilter = searchableTags.length;
+                    if (beforeFilter !== afterFilter) {
+                        console.log('[SEARCH] AND mode - Pattern mode ON - filtered searchableTags from', beforeFilter, 'to', afterFilter, 'for image', image.id);
+                        console.log('[SEARCH] AND mode - Image', image.id, 'all tags:', allImageTags);
+                        console.log('[SEARCH] AND mode - Image', image.id, 'pattern tags only:', searchableTags);
+                    }
+                }
+                
                 const imageTagsLower = searchableTags.map(t => t.toLowerCase());
 
                 // Check if image matches all original tags using SAME logic as frontend hover
@@ -1077,7 +1214,11 @@ app.get('/images', (req, res) => {
                     
                     if (isPartialMatch) {
                         // Partial match: same as frontend - check if any image tag contains the search tag
-                        return imageTagsLower.some(imageTag => imageTag.includes(searchLower));
+                        const matches = imageTagsLower.some(imageTag => imageTag.includes(searchLower));
+                        if (patternMode && matches) {
+                            console.log('[SEARCH] AND mode - Image', image.id, 'matches search tag', searchLower, 'in pattern tags:', imageTagsLower);
+                        }
+                        return matches;
                     } else {
                         // Exact match: check if any image tag exactly matches the search tag
                         // Also check if pattern:tag matches (e.g., "pattern:twill" matches "twill")
@@ -1089,6 +1230,10 @@ app.get('/images', (req, res) => {
                         });
                     }
                 });
+
+                if (patternMode && !matchesAll) {
+                    console.log('[SEARCH] AND mode - Pattern mode ON - Image', image.id, 'does NOT match ALL pattern tags. All tags:', allImageTags, 'Pattern tags:', searchableTags, 'Search tags:', tags);
+                }
 
                 // Debug logging for image 190
                 if (image.id === 190) {
@@ -1109,11 +1254,25 @@ app.get('/images', (req, res) => {
                 const allImageTags = image.tags || [];
                 // Keep pattern: tags and subjective tags, but exclude other metadata tags
                 const objectivePrefixes = ['book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'width:', 'length:', 'remark:', 'brand:', 'color:'];
-                const searchableTags = allImageTags.filter(t => {
+                let searchableTags = allImageTags.filter(t => {
                     const tagLower = t.toLowerCase();
                     // Include pattern: tags and tags without colons (subjective tags)
                     return tagLower.startsWith('pattern:') || (!tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix)));
                 });
+                
+                // If pattern mode is active, only check pattern tags
+                if (patternMode) {
+                    const beforeFilter = searchableTags.length;
+                    searchableTags = searchableTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                    const afterFilter = searchableTags.length;
+                    if (image.id === 207) {
+                        console.log('[SEARCH] OR mode - Image 207 - Pattern mode ON');
+                        console.log('[SEARCH] OR mode - Image 207 - All tags:', allImageTags);
+                        console.log('[SEARCH] OR mode - Image 207 - Before pattern filter:', beforeFilter, 'tags');
+                        console.log('[SEARCH] OR mode - Image 207 - After pattern filter:', afterFilter, 'pattern tags:', searchableTags);
+                    }
+                }
+                
                 const imageTagsLower = searchableTags.map(t => t.toLowerCase());
 
                 // Check if image matches at least one original tag using SAME logic as frontend hover
@@ -1123,14 +1282,300 @@ app.get('/images', (req, res) => {
                     if (!searchLower) return false;
                     
                     // Partial match: check if any image tag contains the search tag
-                    return imageTagsLower.some(imageTag => imageTag.includes(searchLower));
+                    const matches = imageTagsLower.some(imageTag => imageTag.includes(searchLower));
+                    if (image.id === 207) {
+                        console.log(`[SEARCH] OR mode - Image 207 - Checking "${searchLower}" in pattern tags:`, imageTagsLower, '->', matches);
+                    }
+                    return matches;
                 });
+
+                if (image.id === 207) {
+                    console.log('[SEARCH] OR mode - Image 207 - matchesAtLeastOne:', matchesAtLeastOne, '-> Should be FILTERED OUT:', !matchesAtLeastOne);
+                }
 
                 return matchesAtLeastOne;
             });
         }
 
-        res.json(imagesWithTags);
+        // If pattern mode is active, filter to only return images that have pattern tags matching the search
+        // This is a CRITICAL filter that MUST run to ensure only pattern tags are considered
+        if (patternMode && tags.length > 0) {
+            const beforeFilterCount = imagesWithTags.length;
+            console.log('[SEARCH] === FINAL PATTERN MODE FILTER ===');
+            console.log('[SEARCH] Pattern mode is ACTIVE - ONLY pattern tags will be considered');
+            console.log('[SEARCH] Original search tags:', tags);
+            console.log('[SEARCH] Before final pattern filter:', beforeFilterCount, 'images');
+            imagesWithTags = imagesWithTags.filter(image => {
+                const allImageTags = image.tags || [];
+                // Get only pattern tags (tags starting with "pattern:")
+                const patternTags = allImageTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                const patternTagsLower = patternTags.map(t => t.toLowerCase());
+
+                // CRITICAL: In pattern mode, if image has NO pattern tags, it MUST be excluded
+                if (patternTags.length === 0) {
+                    if (image.id === 207) {
+                        console.log('[SEARCH] ⚠️ Image 207 has NO pattern tags - FILTERING OUT');
+                    }
+                    return false;
+                }
+
+                if (image.id === 207) {
+                    console.log('[SEARCH] Final filter - Image 207 - All tags:', allImageTags);
+                    console.log('[SEARCH] Final filter - Image 207 - Pattern tags only:', patternTags);
+                    console.log('[SEARCH] Final filter - Image 207 - Search tags:', tags);
+                    console.log('[SEARCH] Final filter - Image 207 - Mode:', mode);
+                }
+
+                // Check if pattern tags match search tags (respecting AND/OR mode)
+                let matchesPatternTag;
+                if (mode.toUpperCase() === 'AND') {
+                    // AND mode: ALL search tags must match in pattern tags
+                    matchesPatternTag = tags.every(originalTag => {
+                        const searchLower = originalTag.toLowerCase();
+                        if (!searchLower) return false;
+                        
+                        if (isPartialMatch) {
+                            // Partial match: check if any pattern tag contains the search tag
+                            return patternTagsLower.some(patternTag => patternTag.includes(searchLower));
+                        } else {
+                            // Exact match: check if any pattern tag exactly matches the search tag
+                            // Also handle "pattern:twill" matching "twill" search
+                            return patternTagsLower.some(patternTag => {
+                                if (patternTag === searchLower) return true;
+                                if (patternTag.startsWith('pattern:') && patternTag.substring(8) === searchLower) return true;
+                                return false;
+                            });
+                        }
+                    });
+                } else {
+                    // OR mode: ANY search tag must match in pattern tags
+                    matchesPatternTag = tags.some(originalTag => {
+                        const searchLower = originalTag.toLowerCase();
+                        if (!searchLower) return false;
+                        
+                        if (isPartialMatch) {
+                            // Partial match: check if any pattern tag contains the search tag
+                            const matches = patternTagsLower.some(patternTag => patternTag.includes(searchLower));
+                            if (image.id === 207) {
+                                console.log(`[SEARCH] Final filter - Image 207 - OR mode - Checking "${searchLower}" in pattern tags:`, patternTagsLower, '->', matches);
+                            }
+                            return matches;
+                        } else {
+                            // Exact match: check if any pattern tag exactly matches the search tag
+                            // Also handle "pattern:twill" matching "twill" search
+                            return patternTagsLower.some(patternTag => {
+                                if (patternTag === searchLower) return true;
+                                if (patternTag.startsWith('pattern:') && patternTag.substring(8) === searchLower) return true;
+                                return false;
+                            });
+                        }
+                    });
+                }
+                
+                if (image.id === 207) {
+                    console.log('[SEARCH] Final filter - Image 207 - matchesPatternTag:', matchesPatternTag, '-> Should be FILTERED OUT:', !matchesPatternTag);
+                    console.log('[SEARCH] Final filter - Image 207 - RETURN VALUE:', matchesPatternTag);
+                }
+
+                // CRITICAL: In pattern mode, ONLY return images that have matching pattern tags
+                // If no pattern tags match, this image MUST be excluded
+                if (!matchesPatternTag) {
+                    console.log('[SEARCH] ⚠️ Pattern mode filter REMOVING image', image.id, '- Pattern tags do NOT match search');
+                    console.log('[SEARCH]   - All tags:', allImageTags);
+                    console.log('[SEARCH]   - Pattern tags:', patternTags);
+                    console.log('[SEARCH]   - Search tags:', tags);
+                    console.log('[SEARCH]   - Mode:', mode.toUpperCase());
+                    if (mode.toUpperCase() === 'OR') {
+                        tags.forEach(searchTag => {
+                            const searchLower = searchTag.toLowerCase();
+                            const matched = patternTagsLower.some(pt => pt.includes(searchLower));
+                            console.log(`[SEARCH]   - "${searchTag}": ${matched ? 'MATCHED' : 'NOT MATCHED'} in pattern tags`);
+                        });
+                    }
+                    return false; // EXPLICITLY return false to filter out
+                } else {
+                    if (image.id === 207) {
+                        console.log('[SEARCH] ⚠️ Pattern mode filter KEPT image 207 - THIS SHOULD NOT HAPPEN!');
+                        console.log('[SEARCH]   - Pattern tags:', patternTags);
+                        console.log('[SEARCH]   - Search tags:', tags);
+                        console.log('[SEARCH]   - Mode:', mode.toUpperCase());
+                    }
+                }
+
+                return matchesPatternTag;
+            });
+            const afterFilterCount = imagesWithTags.length;
+            console.log('[SEARCH] === Pattern mode filter: filtered from', beforeFilterCount, 'to', afterFilterCount, 'images ===');
+            
+            // CRITICAL CHECK: Verify Image 207 is NOT in results
+            const image207StillInResults = imagesWithTags.some(img => img.id === 207);
+            if (image207StillInResults) {
+                console.log('[SEARCH] ⚠️⚠️⚠️ ERROR: Image 207 is STILL in results after pattern filter! ⚠️⚠️⚠️');
+                const img207 = imagesWithTags.find(img => img.id === 207);
+                if (img207) {
+                    const patternTags207 = (img207.tags || []).filter(t => t.toLowerCase().startsWith('pattern:'));
+                    const patternTags207Lower = patternTags207.map(t => t.toLowerCase());
+                    console.log('[SEARCH] Image 207 tags:', img207.tags);
+                    console.log('[SEARCH] Image 207 pattern tags:', patternTags207);
+                    console.log('[SEARCH] Search tags:', tags);
+                    
+                    // Check if pattern tags actually match
+                    const shouldMatch = tags.some(searchTag => {
+                        const searchLower = searchTag.toLowerCase();
+                        return patternTags207Lower.some(pt => pt.includes(searchLower));
+                    });
+                    console.log('[SEARCH] Image 207 should match:', shouldMatch);
+                    
+                    if (!shouldMatch) {
+                        // Force remove it
+                        imagesWithTags = imagesWithTags.filter(img => img.id !== 207);
+                        console.log('[SEARCH] ⚠️ FORCE REMOVED Image 207 from results - pattern tags do not match');
+                    }
+                }
+            }
+        }
+        
+        // FINAL SAFETY CHECK: Remove any images that don't have matching pattern tags when pattern mode is ON
+        if (patternMode && tags.length > 0) {
+            const originalCount = imagesWithTags.length;
+            imagesWithTags = imagesWithTags.filter(image => {
+                const allImageTags = image.tags || [];
+                const patternTags = allImageTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                const patternTagsLower = patternTags.map(t => t.toLowerCase());
+                
+                // Check if ANY pattern tag matches ANY search tag (OR mode) or ALL pattern tags match ALL search tags (AND mode)
+                let matches;
+                if (mode.toUpperCase() === 'AND') {
+                    matches = tags.every(searchTag => {
+                        const searchLower = searchTag.toLowerCase();
+                        return patternTagsLower.some(pt => pt.includes(searchLower));
+                    });
+                } else {
+                    matches = tags.some(searchTag => {
+                        const searchLower = searchTag.toLowerCase();
+                        return patternTagsLower.some(pt => pt.includes(searchLower));
+                    });
+                }
+                
+                if (!matches && image.id === 207) {
+                    console.log('[SEARCH] ⚠️ FINAL SAFETY CHECK: Removing Image 207 - pattern tags do not match');
+                }
+                
+                return matches;
+            });
+            const finalCount = imagesWithTags.length;
+            if (originalCount !== finalCount) {
+                console.log('[SEARCH] ⚠️ FINAL SAFETY CHECK removed', originalCount - finalCount, 'images');
+            }
+        }
+        
+        // ABSOLUTE FINAL CHECK: Remove any images that don't match pattern tags when pattern mode is ON
+        // This MUST run before final results logging
+        if (patternMode && tags.length > 0) {
+            const beforeFinalCheck = imagesWithTags.length;
+            console.log('[SEARCH] === ABSOLUTE FINAL CHECK (BEFORE FINAL RESULTS) ===');
+            console.log('[SEARCH] Pattern mode:', patternMode, '| Tags:', tags, '| Mode:', mode);
+            console.log('[SEARCH] Images before absolute final check:', beforeFinalCheck);
+            
+            imagesWithTags = imagesWithTags.filter(image => {
+                const allImageTags = image.tags || [];
+                const patternTags = allImageTags.filter(t => t.toLowerCase().startsWith('pattern:'));
+                const patternTagsLower = patternTags.map(t => t.toLowerCase());
+                
+                // Check if pattern tags match search tags
+                let matches;
+                if (mode.toUpperCase() === 'AND') {
+                    matches = tags.every(st => {
+                        const searchLower = st.toLowerCase();
+                        return patternTagsLower.some(pt => pt.includes(searchLower));
+                    });
+                } else {
+                    matches = tags.some(st => {
+                        const searchLower = st.toLowerCase();
+                        return patternTagsLower.some(pt => pt.includes(searchLower));
+                    });
+                }
+                
+                if (image.id === 207) {
+                    console.log('[SEARCH] ⚠️ ABSOLUTE FINAL CHECK - Image 207:');
+                    console.log('[SEARCH]   - All tags:', allImageTags);
+                    console.log('[SEARCH]   - Pattern tags:', patternTags);
+                    console.log('[SEARCH]   - Search tags:', tags);
+                    console.log('[SEARCH]   - Matches:', matches);
+                    console.log('[SEARCH]   - Will be removed:', !matches);
+                }
+                
+                if (!matches) {
+                    return false; // Remove image
+                }
+                return true; // Keep image
+            });
+            
+            const afterFinalCheck = imagesWithTags.length;
+            console.log('[SEARCH] Images after absolute final check:', afterFinalCheck);
+            if (beforeFinalCheck !== afterFinalCheck) {
+                console.log('[SEARCH] ⚠️ ABSOLUTE FINAL CHECK removed', beforeFinalCheck - afterFinalCheck, 'images');
+            }
+            
+            // Verify Image 207 is gone
+            const stillHas207 = imagesWithTags.some(img => img.id === 207);
+            if (stillHas207) {
+                console.log('[SEARCH] ⚠️⚠️⚠️ CRITICAL ERROR: Image 207 STILL in results after absolute final check!');
+                // Force remove it
+                imagesWithTags = imagesWithTags.filter(img => img.id !== 207);
+                console.log('[SEARCH] ⚠️ FORCE REMOVED Image 207');
+            }
+            console.log('[SEARCH] === END ABSOLUTE FINAL CHECK ===');
+        }
+        
+        // Final summary of selected images
+        console.log('[SEARCH] === FINAL RESULTS ===');
+        console.log('[SEARCH] Pattern mode:', patternMode, '| Tags:', tags);
+        console.log('[SEARCH] Total images returned:', imagesWithTags.length);
+        imagesWithTags.forEach(img => {
+            console.log(`[SEARCH] Final selected Image ${img.id} - Tags:`, img.tags);
+            if (patternMode) {
+                const patternTags = (img.tags || []).filter(t => t.toLowerCase().startsWith('pattern:'));
+                console.log(`[SEARCH]   - Pattern tags:`, patternTags);
+            }
+        });
+        console.log('[SEARCH] === END FINAL RESULTS ===');
+
+        // Return results with debug info in browser (only if pattern mode is ON)
+        if (patternMode && tags.length > 0) {
+            const debugInfo = {
+                patternMode: patternMode,
+                searchTags: tags,
+                mode: mode,
+                totalImages: imagesWithTags.length,
+                image207InResults: imagesWithTags.some(img => img.id === 207),
+                image207Info: null
+            };
+            
+            const img207 = imagesWithTags.find(img => img.id === 207);
+            if (img207) {
+                const patternTags207 = (img207.tags || []).filter(t => t.toLowerCase().startsWith('pattern:'));
+                const patternTags207Lower = patternTags207.map(t => t.toLowerCase());
+                const matches = mode.toUpperCase() === 'OR' 
+                    ? tags.some(st => patternTags207Lower.some(pt => pt.includes(st.toLowerCase())))
+                    : tags.every(st => patternTags207Lower.some(pt => pt.includes(st.toLowerCase())));
+                
+                debugInfo.image207Info = {
+                    allTags: img207.tags,
+                    patternTags: patternTags207,
+                    matches: matches,
+                    shouldBeRemoved: !matches
+                };
+            }
+            
+            // Add debug info to response
+            res.json({
+                images: imagesWithTags,
+                debug: debugInfo
+            });
+        } else {
+            res.json(imagesWithTags);
+        }
     } catch (err) {
         console.error('Error searching images:', err.message);
         res.status(500).send('Error searching images');
