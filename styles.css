@@ -960,6 +960,34 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 
 /* Tag overlay on library images */
 .tag-overlay {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.tag-overlay .tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tag-overlay .tag-chip.is-match {
+  font-weight: 700;
+}
+
+.tag-overlay .tag-chip.is-neutral {
+  background: rgba(0,0,0,0.45);
+  font-weight: 600;
+}
+
+.tag-overlay {
     position: absolute;
     top: 4px;
     left: 4px;

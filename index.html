@@ -2384,7 +2384,10 @@
         }
 
         // Add tag overlay - show only subjective tags (exclude objective metadata like width/length)
-        const matchingTags = getMatchingTags(image.tags || [], currentSearchTags);
+        // If we're rendering the "Other Images" section, chipsReferenceOnly will be true and
+        // getActiveSearchTagTexts() will return [] so we do not highlight non-matching cards.
+        const effectiveSearchTags = chipsReferenceOnly ? [] : currentSearchTags;
+        const matchingTags = getMatchingTags(image.tags || [], effectiveSearchTags);
         const allImageTags = image.tags || [];
         
         // Filter out objective metadata tags (width, length, book, page, row, column, type, material, remark, brand, color)
@@ -2408,7 +2411,7 @@
         }
 
         let matchesAllSearchTags = false;
-        if (currentSearchTags.length > 0) {
+        if (effectiveSearchTags.length > 0) {
             const subjectiveImageTags = allImageTags
                 .map(t => t.toLowerCase())
                 .filter(t => !t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix)));
@@ -2421,7 +2424,7 @@
                     return t.startsWith('pattern:') || (!t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix)));
                 });
 
-            matchesAllSearchTags = currentSearchTags.every(searchTag => {
+            matchesAllSearchTags = effectiveSearchTags.every(searchTag => {
                 const searchLower = searchTag.toLowerCase();
                 if (!searchLower) return false;
                 return searchableImageTags.some(imageTag => {
@@ -2450,6 +2453,15 @@
             const shouldHighlight = tagSearchMode === 'AND'
                 ? isTagSelected && matchingSubjectiveTags.length > 0
                 : matchingSubjectiveTags.length > 0;
+
+            // Never highlight cards in the "Other Images" section.
+            // (They should be neutral/blank even if their tags contain the search terms.)
+            if (chipsReferenceOnly) {
+                // Ensure any previous styling doesn't leak
+                card.style.outline = '';
+                card.style.outlineOffset = '';
+                card.style.boxShadow = '';
+            }
 
             if (shouldHighlight) {
                 tagOverlay.classList.add('has-matches');
@@ -2516,19 +2528,22 @@
             // Compute how many SEARCH TAGS this image matches so we can
             // detect duplicates across tags (e.g. image matches both "red" and "text").
             let matchingSearchTagsCount = 0;
-            if (currentSearchTags.length > 0) {
+            if (effectiveSearchTags.length > 0) {
                 const imageTagLower = allImageTags.map(t => t.toLowerCase());
-                const subjectiveImageTags = imageTagLower.filter(t =>
-                    !t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix))
+                // Count matches against searchable tags (subjective tags + pattern: tags)
+                const searchableImageTagsForCount = imageTagLower.filter(t =>
+                    t.startsWith('pattern:') || (!t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix)))
                 );
 
-                matchingSearchTagsCount = currentSearchTags.filter(searchTag => {
+                matchingSearchTagsCount = effectiveSearchTags.filter(searchTag => {
                     const searchLower = searchTag.toLowerCase();
                     if (!searchLower) return false;
-                    return subjectiveImageTags.some(imageTag => {
-                        return exactWordMode
-                            ? imageTag === searchLower
-                            : imageTag.includes(searchLower);
+                    return searchableImageTagsForCount.some(imageTag => {
+                        // Match if tag equals search tag, OR if pattern:tag matches the search tag portion
+                        if (exactWordMode) {
+                            return imageTag === searchLower || (imageTag.startsWith('pattern:') && imageTag.substring(8) === searchLower);
+                        }
+                        return imageTag.includes(searchLower) || (imageTag.startsWith('pattern:') && imageTag.includes(searchLower));
                     });
                 }).length;
             }
@@ -2540,69 +2555,95 @@
             const maxTagsToShow = 3;
             const tagsToShow = subjectiveTags.slice(0, maxTagsToShow);
 
-            // Clear any default text and build spans so we can style duplicates
+            // Clear any default text and build tag chips (so matched tags can be color-coded)
             tagOverlay.textContent = '';
 
-            // Reorder so duplicate-overlap tags (red ones) appear FIRST in this line
-            // Only highlight tags that match the search tags when image matches multiple search tags
-            const dupTags = [];
-            const nonDupTags = [];
+            // Helper to resolve which search chip color a given tag belongs to
+            const getChipColorForTag = (tagLower) => {
+                const chipContainer = document.getElementById('library-search-chips');
+                const chipTagsInOrder = chipContainer
+                    ? Array.from(chipContainer.querySelectorAll('.search-chip'))
+                        .map(chip => (chip.dataset.tag || '').toLowerCase())
+                        .filter(Boolean)
+                    : [];
+
+                // Respect chip order: first chip that matches wins
+                for (const chipTag of chipTagsInOrder) {
+                    const matchesChip = exactWordMode
+                        ? (tagLower === chipTag || (tagLower.startsWith('pattern:') && tagLower.substring(8) === chipTag))
+                        : (tagLower.includes(chipTag) || (tagLower.startsWith('pattern:') && tagLower.includes(chipTag)));
+                    if (matchesChip && searchTagColors[chipTag]) {
+                        return searchTagColors[chipTag];
+                    }
+                }
+
+                // Fallback: any searchTagColors match
+                for (const st of effectiveSearchTags) {
+                    const stLower = (st || '').toLowerCase();
+                    if (!stLower) continue;
+                    const matches = exactWordMode
+                        ? (tagLower === stLower || (tagLower.startsWith('pattern:') && tagLower.substring(8) === stLower))
+                        : (tagLower.includes(stLower) || (tagLower.startsWith('pattern:') && tagLower.includes(stLower)));
+                    if (matches && searchTagColors[stLower]) {
+                        return searchTagColors[stLower];
+                    }
+                }
+
+                return null;
+            };
+
+            // Reorder so tags that match the search appear first
+            const matchTags = [];
+            const otherTags = [];
             tagsToShow.forEach(tag => {
                 const tagLower = tag.toLowerCase();
-                // Check if this image tag matches any of the search tags
-                const matchesSearchTag = currentSearchTags.some(searchTag => {
+                const matchesSearchTag = effectiveSearchTags.some(searchTag => {
                     const searchLower = searchTag.toLowerCase();
                     if (!searchLower) return false;
                     return exactWordMode
-                        ? tagLower === searchLower
-                        : tagLower.includes(searchLower);
+                        ? (tagLower === searchLower || (tagLower.startsWith('pattern:') && tagLower.substring(8) === searchLower))
+                        : (tagLower.includes(searchLower) || (tagLower.startsWith('pattern:') && tagLower.includes(searchLower)));
                 });
-                // Only mark as dup tag if image matches multiple search tags AND this tag matches a search tag
-                const isDupTag = isDuplicateAcrossTags && matchesSearchTag;
-                if (isDupTag) {
-                    dupTags.push(tag);
-                } else {
-                    nonDupTags.push(tag);
-                }
+                (matchesSearchTag ? matchTags : otherTags).push(tag);
             });
-            const orderedTags = [...dupTags, ...nonDupTags];
+            const orderedTags = [...matchTags, ...otherTags];
 
-            orderedTags.forEach((tag, idx) => {
-                if (idx > 0) {
-                    const comma = document.createElement('span');
-                    comma.textContent = ', ';
-                    tagOverlay.appendChild(comma);
-                }
+            orderedTags.forEach(tag => {
+                const chip = document.createElement('span');
+                chip.className = 'tag-chip';
+                chip.textContent = tag;
 
-                const span = document.createElement('span');
-                span.textContent = tag;
-
-                // If image matches multiple search tags and this tag matches one of them,
-                // show this tag text in red to mark the duplicate image.
                 const tagLower = tag.toLowerCase();
-                const matchesSearchTag = currentSearchTags.some(searchTag => {
+                const matchesSearchTag = effectiveSearchTags.some(searchTag => {
                     const searchLower = searchTag.toLowerCase();
                     if (!searchLower) return false;
                     return exactWordMode
-                        ? tagLower === searchLower
-                        : tagLower.includes(searchLower);
+                        ? (tagLower === searchLower || (tagLower.startsWith('pattern:') && tagLower.substring(8) === searchLower))
+                        : (tagLower.includes(searchLower) || (tagLower.startsWith('pattern:') && tagLower.includes(searchLower)));
                 });
-                if (isDuplicateAcrossTags && matchesSearchTag) {
-                    span.style.color = 'red';
-                    span.style.fontWeight = '600';
+
+                if (!chipsReferenceOnly && matchesSearchTag) {
+                    chip.classList.add('is-match');
+                    const color = getChipColorForTag(tagLower);
+                    if (color) {
+                        chip.style.backgroundColor = color;
+                    }
+                } else {
+                    chip.classList.add('is-neutral');
                 }
 
-                tagOverlay.appendChild(span);
+                tagOverlay.appendChild(chip);
             });
 
             if (subjectiveTags.length > maxTagsToShow) {
-                const moreSpan = document.createElement('span');
-                moreSpan.textContent = ` +${subjectiveTags.length - maxTagsToShow}`;
-                tagOverlay.appendChild(moreSpan);
+                const moreChip = document.createElement('span');
+                moreChip.className = 'tag-chip is-neutral';
+                moreChip.textContent = `+${subjectiveTags.length - maxTagsToShow}`;
+                tagOverlay.appendChild(moreChip);
             }
 
             // Extra visual highlight for duplicate images across tags (OR) and all-tags matches (AND)
-            if (isDuplicateAcrossTags) {
+            if (!chipsReferenceOnly && isDuplicateAcrossTags) {
                 // Strong red outline + glow
                 card.style.outline = '3px solid red';
                 card.style.outlineOffset = '3px';
@@ -3327,6 +3368,7 @@
     });
 
     async function displayLibraryImages() {
+        chipsReferenceOnly = false; // Reset at start of every render so highlight logic is fresh
         console.log('=== displayLibraryImages START ===');
         console.log('displayLibraryImages called, selectedImages at start:', selectedImages.length);
         console.log('isPoolView at start:', isPoolView);
