@@ -12,10 +12,11 @@
     }
     document.title = `Image Library — Minimal Shell v${APP_VERSION}`;
 
-    // Backend API base URL
-    const API_URL = (window.location.origin.includes(':8080'))
+    // Backend API base URL (provided by modules/api.js; fallback if not loaded)
+    const API_URL = window.API_URL || ((window.location.origin.includes(':8080'))
         ? window.location.origin.replace(':8080', ':3000')
-        : window.location.origin;
+        : window.location.origin);
+    window.API_URL = API_URL;
     const navLinks = {
         library: document.getElementById('nav-library'),
         upload: document.getElementById('nav-upload'),
@@ -2480,14 +2481,8 @@
             clearBrokenImageTracking();
 
             // Get all images first
-            const sessionToken = localStorage.getItem('sessionToken');
-            const headers = {};
-            if (sessionToken) {
-                headers['Authorization'] = `Bearer ${sessionToken}`;
-            }
-            const allImagesResponse = await fetch(`${API_URL}/images`, {
-                headers: headers
-            });
+            // Use API helpers (modules/api.js)
+            const allImagesResponse = await window.apiFetch('/images');
             const allImagesData = await allImagesResponse.json();
             const allImages = Array.isArray(allImagesData) ? allImagesData : allImagesData.images || [];
 
@@ -2537,17 +2532,10 @@
 
                 // First, process the search tags to get tag-matching images
                 console.log('Fetching tag-matching images for tags:', currentSearchTags);
-                const sessionToken = localStorage.getItem('sessionToken');
-                const headers = {};
-                if (sessionToken) {
-                    headers['Authorization'] = `Bearer ${sessionToken}`;
-                }
                 const matchMode = exactWordMode ? 'exact' : 'partial';
                 const patternParam = patternMode ? '&pattern=1' : '';
                 console.log('[FRONTEND POOL] Searching with tags:', currentSearchTags, 'mode:', searchMode, 'matchMode:', matchMode, 'exactWordMode:', exactWordMode, 'patternMode:', patternMode);
-                const tagResponse = await fetch(`${API_URL}/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}${patternParam}`, {
-                    headers: headers
-                });
+                const tagResponse = await window.apiFetch(`/images?tags=${currentSearchTags.join(',')}&mode=${searchMode}&match=${matchMode}${patternParam}`);
 
                 if (!tagResponse.ok) {
                     throw new Error(`Tag search failed: ${tagResponse.status} ${tagResponse.statusText}`);
