@@ -4037,6 +4037,24 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   display: none; /* No longer needed, image is shown in the dropzone itself */
 }
 
+.pattern-apply-center-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 2px dashed #ddd;
+  border-radius: 10px;
+  background-color: #fafafa;
+}
+
+.pattern-apply-center-preview__hint {
+  color: #888;
+  font-size: 14px;
+}
+
 .pattern-apply-preview-card {
   border: 1px solid #eee;
   border-radius: 8px;

@@ -9702,6 +9702,14 @@
                 // Set image as dropzone background
                 dropzone.style.backgroundImage = `url(${dataUrl})`;
 
+                // Mirror the exact same image into the center section preview
+                const centerPreview = document.getElementById('pattern-apply-center-preview');
+                const centerHint = centerPreview ? centerPreview.querySelector('.pattern-apply-center-preview__hint') : null;
+                if (centerPreview) {
+                    centerPreview.style.backgroundImage = `url(${dataUrl})`;
+                    if (centerHint) centerHint.style.display = 'none';
+                }
+
                 // Hide helper text once an image is present
                 if (dropText) dropText.style.display = 'none';
 
