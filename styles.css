@@ -3986,6 +3986,18 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   border-right: 1px solid #ddd;
 }
 
+.pattern-apply-center-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-right: 6px;
+}
+
+.pattern-apply-center-header .panel__title {
+  margin: 0;
+}
+
 .pattern-apply-right {
   width: 20%;
 }

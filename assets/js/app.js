@@ -9835,6 +9835,24 @@
         if (!centerPreview || !canvas) return;
 
         const ctx = canvas.getContext('2d');
+        const resetBtn = document.getElementById('pattern-apply-reset-btn');
+
+        if (resetBtn && !resetBtn.dataset.bound) {
+            resetBtn.dataset.bound = 'true';
+            resetBtn.addEventListener('click', () => {
+                if (!patternApplyBaseImageData) return;
+                // Reset current image back to the original base image
+                patternApplyCurrentImageData = new ImageData(
+                    new Uint8ClampedArray(patternApplyBaseImageData.data),
+                    patternApplyBaseImageData.width,
+                    patternApplyBaseImageData.height
+                );
+                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+
+                // Reset hover cache
+                patternApplyLastHover = { x: -1, y: -1, key: '' };
+            });
+        }
 
         centerPreview.addEventListener('dragover', (e) => {
             e.preventDefault();
