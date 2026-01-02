@@ -3002,6 +3002,7 @@
         } else if (pageName === 'pattern-apply') {
             // Pattern Apply page initialization
             await loadPatternsForPatternApply();
+            initializePatternApplyDropzone();
         }
     }
 
@@ -9619,6 +9620,95 @@
         } catch (error) {
             console.error('Error loading patterns for pattern apply:', error);
             listEl.innerHTML = '<p class="text">Error loading patterns.</p>';
+        }
+    }
+
+    // Pattern Apply - Initialize drag/drop, browse, paste
+    function initializePatternApplyDropzone() {
+        const dropzone = document.getElementById('pattern-apply-dropzone');
+        const fileInput = document.getElementById('pattern-apply-file-input');
+        const browseBtn = document.getElementById('pattern-apply-browse-btn');
+        const previewGrid = document.getElementById('pattern-apply-preview-grid');
+        const dropText = dropzone.querySelector('.pattern-apply-dropzone__text');
+        
+        if (!dropzone || !fileInput || !browseBtn) return;
+
+        // Handle file selection via browse button
+        browseBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Handle file input change
+        fileInput.addEventListener('change', (e) => {
+            handleDroppedFiles(e.target.files);
+            fileInput.value = ''; // Reset to allow selecting same file again
+        });
+
+        // Handle drag over
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('is-dragover');
+        });
+
+        // Handle drag leave
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('is-dragover');
+        });
+
+        // Handle drop
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('is-dragover');
+            
+            if (e.dataTransfer.files.length > 0) {
+                handleDroppedFiles(e.dataTransfer.files);
+            }
+        });
+
+        // Handle paste
+        document.addEventListener('paste', (e) => {
+            // Only handle paste when on the pattern-apply page
+            if (!pages['pattern-apply'] || pages['pattern-apply'].classList.contains('is-hidden')) {
+                return;
+            }
+            
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            const files = [];
+            
+            for (const item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            
+            if (files.length > 0) {
+                e.preventDefault();
+                handleDroppedFiles(files);
+            }
+        });
+
+        // Process dropped/pasted files
+        function handleDroppedFiles(fileList) {
+            const files = Array.from(fileList).filter(file => file.type && file.type.startsWith('image/'));
+            if (files.length === 0) return;
+
+            // Use the first image only (show it inside the dropzone)
+            const file = files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const dataUrl = e.target.result;
+
+                // Set image as dropzone background
+                dropzone.style.backgroundImage = `url(${dataUrl})`;
+
+                // Hide helper text once an image is present
+                if (dropText) dropText.style.display = 'none';
+
+                // Clear any previous grid (grid is hidden via CSS anyway)
+                if (previewGrid) previewGrid.innerHTML = '';
+            };
+            reader.readAsDataURL(file);
         }
     }
 

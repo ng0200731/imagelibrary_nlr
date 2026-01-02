@@ -353,7 +353,14 @@
             <section class="panel">
               <h2 class="panel__title">Left Section (40%)</h2>
               <div class="pattern-apply-content">
-                <!-- Content for left section -->
+                <!-- Upload area for Pattern Apply -->
+                <div id="pattern-apply-dropzone" class="pattern-apply-dropzone">
+                  <p class="pattern-apply-dropzone__text">Drag &amp; Drop images here, paste, or
+                    <button id="pattern-apply-browse-btn" type="button" class="button">Browse</button>
+                  </p>
+                  <input id="pattern-apply-file-input" type="file" accept="image/*" multiple style="display:none;" />
+                </div>
+                <div id="pattern-apply-preview-grid" class="pattern-apply-preview-grid"></div>
               </div>
             </section>
           </div>
