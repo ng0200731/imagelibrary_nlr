@@ -22,6 +22,7 @@
         <a id="nav-upload" class="menu__item" href="#">Upload Image</a>
         <a id="nav-upload-pattern" class="menu__item" href="#">Upload Pattern</a>
         <a id="nav-project" class="menu__item" href="#">Project</a>
+        <a id="nav-pattern-apply" class="menu__item" href="#">Pattern Apply</a>
         <a id="nav-tags" class="menu__item is-hidden" href="#">Tags</a>
         <a id="nav-admin" class="menu__item is-hidden" href="#">Admin Panel</a>
         <a id="nav-settings" class="menu__item is-hidden" href="#" onclick="openSettings()">Settings</a>
@@ -335,6 +336,44 @@
             <p class="text">No projects created yet. Select images in the Image Library and click "Add to Project" to create your first project.</p>
           </div>
         </section>
+      </div>
+
+      <!-- Pattern Apply Page -->
+      <div id="page-pattern-apply" class="page is-hidden">
+        <header class="content__header">
+          <div class="header-content-wrapper">
+            <div class="header-left">
+              <h1 class="title">Pattern Apply</h1>
+            </div>
+            <div id="user-email-display-pattern-apply" class="user-email-display"></div>
+          </div>
+        </header>
+        <div class="pattern-apply-container">
+          <div class="pattern-apply-section pattern-apply-left">
+            <section class="panel">
+              <h2 class="panel__title">Left Section (40%)</h2>
+              <div class="pattern-apply-content">
+                <!-- Content for left section -->
+              </div>
+            </section>
+          </div>
+          <div class="pattern-apply-section pattern-apply-center">
+            <section class="panel">
+              <h2 class="panel__title">Center Section (40%)</h2>
+              <div class="pattern-apply-content">
+                <!-- Content for center section -->
+              </div>
+            </section>
+          </div>
+          <div class="pattern-apply-section pattern-apply-right">
+            <section class="panel">
+              <h2 class="panel__title">Patterns</h2>
+              <div id="pattern-apply-pattern-list" class="pattern-apply-pattern-list">
+                <!-- Pattern rows will be populated by JavaScript -->
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
 
       <!-- Admin Panel Page -->

@@ -22,6 +22,7 @@
         upload: document.getElementById('nav-upload'),
         'upload-pattern': document.getElementById('nav-upload-pattern'),
         project: document.getElementById('nav-project'),
+        'pattern-apply': document.getElementById('nav-pattern-apply'),
         admin: document.getElementById('nav-admin'),
     };
 
@@ -71,6 +72,7 @@
         upload: document.getElementById('page-upload'),
         'upload-pattern': document.getElementById('page-upload-pattern'),
         project: document.getElementById('page-project'),
+        'pattern-apply': document.getElementById('page-pattern-apply'),
         admin: document.getElementById('page-admin'),
     };
     const fileInput = document.getElementById('file-input');
@@ -2961,7 +2963,7 @@
         }
     }
 
-    function navigateTo(pageName) {
+    async function navigateTo(pageName) {
         const confirmModal = document.getElementById('confirm-modal');
         // Do not navigate if the confirmation modal is visible
         if (confirmModal && !confirmModal.classList.contains('is-hidden')) {
@@ -2997,6 +2999,9 @@
         } else if (pageName === 'upload-pattern') {
             // Load pattern thumbnails when page is shown
             loadPatternThumbnails();
+        } else if (pageName === 'pattern-apply') {
+            // Pattern Apply page initialization
+            await loadPatternsForPatternApply();
         }
     }
 
@@ -8623,6 +8628,7 @@
     navLinks.upload.addEventListener('click', (e) => { e.preventDefault(); navigateTo('upload'); });
     navLinks['upload-pattern'].addEventListener('click', (e) => { e.preventDefault(); navigateTo('upload-pattern'); });
     navLinks.project.addEventListener('click', (e) => { e.preventDefault(); navigateTo('project'); });
+    navLinks['pattern-apply'].addEventListener('click', (e) => { e.preventDefault(); navigateTo('pattern-apply'); });
     if (navLinks.admin) {
         navLinks.admin.addEventListener('click', (e) => { 
             e.preventDefault(); 
@@ -9516,6 +9522,73 @@
         
         if (selectedPatternPreview) {
             selectedPatternPreview.classList.remove('is-hidden');
+        }
+    }
+
+    // Load patterns for Pattern Apply right panel (list view)
+    async function loadPatternsForPatternApply() {
+        const listEl = document.getElementById('pattern-apply-pattern-list');
+        if (!listEl) return;
+
+        try {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const headers = {};
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+
+            const response = await fetch(`${API_URL}/api/patterns`, {
+                method: 'GET',
+                headers: headers
+            });
+
+            if (!response.ok) {
+                console.error('Failed to load patterns for pattern apply:', response.status);
+                listEl.innerHTML = '<p class="text">Failed to load patterns.</p>';
+                return;
+            }
+
+            const patterns = await response.json();
+            listEl.innerHTML = '';
+
+            if (!patterns || patterns.length === 0) {
+                listEl.innerHTML = '<p class="text">No patterns uploaded yet.</p>';
+                return;
+            }
+
+            patterns.forEach(pattern => {
+                const row = document.createElement('div');
+                row.className = 'pattern-apply-pattern-row';
+                row.dataset.patternId = pattern.id;
+
+                const thumbWrap = document.createElement('div');
+                thumbWrap.className = 'pattern-apply-pattern-thumb-wrap';
+
+                const img = document.createElement('img');
+                img.className = 'pattern-apply-pattern-thumb';
+                const filename = (pattern.filepath || '').split(/[/\\]/).pop();
+                img.src = filename ? `${API_URL}/uploads/patterns/${filename}` : '';
+                img.alt = pattern.name || 'Pattern';
+                img.loading = 'lazy';
+                img.onerror = function() {
+                    // simple fallback if image missing
+                    this.style.display = 'none';
+                    thumbWrap.innerHTML = '<div class="pattern-apply-pattern-thumb-fallback">📄</div>';
+                };
+
+                const name = document.createElement('div');
+                name.className = 'pattern-apply-pattern-name';
+                name.textContent = pattern.name || 'Unnamed Pattern';
+
+                thumbWrap.appendChild(img);
+                row.appendChild(thumbWrap);
+                row.appendChild(name);
+
+                listEl.appendChild(row);
+            });
+        } catch (error) {
+            console.error('Error loading patterns for pattern apply:', error);
+            listEl.innerHTML = '<p class="text">Error loading patterns.</p>';
         }
     }
 
