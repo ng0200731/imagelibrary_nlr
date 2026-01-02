@@ -9587,10 +9587,13 @@
 
             // If user drops outside target, clear any leftover highlight
             row.addEventListener('dragend', () => {
-                const canvas = document.getElementById('pattern-apply-center-canvas');
-                if (!canvas || !patternApplyCurrentImageData) return;
-                const ctx = canvas.getContext('2d');
-                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+                // If user releases drag anywhere (including outside drop targets), clear the overlay highlight
+                const highlightCanvas = document.getElementById('pattern-apply-highlight-canvas');
+                if (highlightCanvas) {
+                    const hctx = highlightCanvas.getContext('2d');
+                    hctx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+                }
+
                 const centerPreview = document.getElementById('pattern-apply-center-preview');
                 if (centerPreview) {
                     centerPreview.classList.remove('is-dragover');
@@ -10025,6 +10028,7 @@
                     : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
 
                 applyPatternToMask(patternUrl, maskResult.mask);
+                clearOverlay();
                 centerPreview.classList.remove('is-working');
             }, 10);
         });
@@ -10063,6 +10067,9 @@
                 
                 // Update the main canvas
                 ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+
+                // Remove yellow highlight overlay after applying
+                clearOverlay();
             };
             patternImg.src = patternUrl;
         }
