@@ -1887,6 +1887,7 @@
         // Check if we should show selected images at front (library view with selections, not pool view, first page only)
         const allSelectedImageIds = [...new Set([...selectedImages, ...tagSelectedImages])];
         const shouldShowSelectedAtFront = !isPoolView && allSelectedImageIds.length > 0 && currentPage === 0;
+        const shouldShowNoMatchFoundHeader = !isPoolView && allSelectedImageIds.length === 0 && currentPage === 0 && currentSearchTags.length > 0;
         
         // Clear any existing messages
         const existingMessage = libraryGrid.querySelector('.no-images-message');
@@ -1896,6 +1897,15 @@
         
         // Track if any cards were added
         let cardsAdded = 0;
+
+        // When nothing is selected, show a highly visible message at the SAME location as the "Matched (N)" header.
+        // requested: <div class="results-separator results-separator--matched">No Match Found</div>
+        if (shouldShowNoMatchFoundHeader) {
+            const noMatchHeader = document.createElement('div');
+            noMatchHeader.className = 'results-separator results-separator--matched';
+            noMatchHeader.textContent = 'No Match Found';
+            libraryGrid.appendChild(noMatchHeader);
+        }
         
         if (shouldShowSelectedAtFront) {
             // First, display selected images at the front (in color, clickable)
@@ -2001,10 +2011,18 @@
         // Show message if no images were added to the grid (and not in pool view, which has its own message)
         // This covers cases like: no images loaded, OR mode with no matches, etc.
         if (!isPoolView && cardsAdded === 0 && currentPage === 0) {
+            // Requested: use the same visible separator style to make "no result" easy to notice.
+            // <div class="results-separator results-separator--matched">No Match Found</div>
+            const noMatchHeader = document.createElement('div');
+            noMatchHeader.className = 'results-separator results-separator--matched';
+            noMatchHeader.textContent = 'No Match Found';
+            libraryGrid.appendChild(noMatchHeader);
+
+            // Keep the existing message as secondary/explanatory text (optional).
             const noImagesMessage = document.createElement('div');
             noImagesMessage.className = 'no-images-message';
             noImagesMessage.style.textAlign = 'center';
-            noImagesMessage.style.padding = '40px';
+            noImagesMessage.style.padding = '20px 40px 40px';
             noImagesMessage.style.color = '#666';
             noImagesMessage.innerHTML = '<p>No images to display.</p>';
             libraryGrid.appendChild(noImagesMessage);
