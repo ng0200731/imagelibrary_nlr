@@ -4002,6 +4002,28 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pattern-apply-tolerance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #444;
+}
+
+.pattern-apply-tolerance-range {
+  color: #777;
+  font-weight: normal;
+}
+
+.pattern-apply-tolerance input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .pattern-apply-center-actions .button.is-active {

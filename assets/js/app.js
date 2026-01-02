@@ -9535,7 +9535,7 @@
     let patternApplyCurrentImageData = null; // ImageData (mutable / after applying patterns)
     let patternApplyPatternImageCache = new Map(); // url -> HTMLImageElement
     let patternApplyLastHover = { x: -1, y: -1, key: '' };
-    const PATTERN_APPLY_TOLERANCE = 20; // color tolerance
+    let patternApplyTolerance = 20; // default color tolerance (user adjustable)
     let patternApplyMode = 'region'; // 'region' | 'color'
 
     // Render the pattern list in the Pattern Apply right panel
@@ -9583,6 +9583,20 @@
                 // Store the pattern's image URL for the drop event
                 e.dataTransfer.setData('text/plain', img.src);
                 e.dataTransfer.effectAllowed = 'copy';
+            });
+
+            // If user drops outside target, clear any leftover highlight
+            row.addEventListener('dragend', () => {
+                const canvas = document.getElementById('pattern-apply-center-canvas');
+                if (!canvas || !patternApplyCurrentImageData) return;
+                const ctx = canvas.getContext('2d');
+                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+                const centerPreview = document.getElementById('pattern-apply-center-preview');
+                if (centerPreview) {
+                    centerPreview.classList.remove('is-dragover');
+                    centerPreview.classList.remove('is-working');
+                }
+                patternApplyLastHover = { x: -1, y: -1, key: '' };
             });
 
             listEl.appendChild(row);
@@ -9773,13 +9787,15 @@
     }
 
     // Flood fill utility (contiguous region)
-    function floodFillMask(ctx, x, y, tolerance) {
-        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    function floodFillMaskFromImageData(imageData, x, y, tolerance) {
         const { width, height, data } = imageData;
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return { mask: new ImageData(width, height), pickedColor: [0, 0, 0, 0] };
+        }
+
         const stack = [[x, y]];
         const initialColor = getColorAtPixel(data, width, x, y);
         const visited = new Uint8Array(width * height);
-
         const mask = new Uint8ClampedArray(width * height * 4);
 
         while (stack.length > 0) {
@@ -9797,7 +9813,7 @@
             mask[di] = 255;
             mask[di + 1] = 255;
             mask[di + 2] = 255;
-            mask[di + 3] = 255; // alpha==255 means included
+            mask[di + 3] = 255;
 
             stack.push([curX + 1, curY]);
             stack.push([curX - 1, curY]);
@@ -9808,25 +9824,25 @@
         return { mask: new ImageData(mask, width, height), pickedColor: initialColor };
     }
 
-    // Global color mask (all pixels matching picked color)
-    function colorMask(ctx, x, y, tolerance) {
-        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    function colorMaskFromImageData(imageData, x, y, tolerance) {
         const { width, height, data } = imageData;
-        const pickedColor = getColorAtPixel(data, width, x, y);
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return { mask: new ImageData(width, height), pickedColor: [0, 0, 0, 0] };
+        }
 
+        const pickedColor = getColorAtPixel(data, width, x, y);
         const mask = new Uint8ClampedArray(width * height * 4);
-        for (let py = 0; py < height; py++) {
-            for (let px = 0; px < width; px++) {
-                const idx = (py * width + px) * 4;
-                const c = [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]];
-                if (colorsAreSimilar(pickedColor, c, tolerance)) {
-                    mask[idx] = 255;
-                    mask[idx + 1] = 255;
-                    mask[idx + 2] = 255;
-                    mask[idx + 3] = 255;
-                }
+
+        for (let i = 0; i < data.length; i += 4) {
+            const c = [data[i], data[i + 1], data[i + 2], data[i + 3]];
+            if (colorsAreSimilar(pickedColor, c, tolerance)) {
+                mask[i] = 255;
+                mask[i + 1] = 255;
+                mask[i + 2] = 255;
+                mask[i + 3] = 255;
             }
         }
+
         return { mask: new ImageData(mask, width, height), pickedColor };
     }
 
@@ -9868,6 +9884,33 @@
         const resetBtn = document.getElementById('pattern-apply-reset-btn');
         const regionBtn = document.getElementById('pattern-apply-mode-region');
         const colorBtn = document.getElementById('pattern-apply-mode-color');
+        const toleranceInput = document.getElementById('pattern-apply-tolerance-input');
+
+        if (toleranceInput && !toleranceInput.dataset.bound) {
+            toleranceInput.dataset.bound = 'true';
+            // Initialize from current value
+            const initial = parseInt(toleranceInput.value, 10);
+            if (!Number.isNaN(initial)) patternApplyTolerance = initial;
+
+            toleranceInput.addEventListener('input', () => {
+                const raw = parseInt(toleranceInput.value, 10);
+                if (Number.isNaN(raw)) return;
+
+                if (raw > 100) {
+                    alert('Tolerance max is 100');
+                    toleranceInput.value = '100';
+                    patternApplyTolerance = 100;
+                    return;
+                }
+                if (raw < 0) {
+                    toleranceInput.value = '0';
+                    patternApplyTolerance = 0;
+                    return;
+                }
+
+                patternApplyTolerance = raw;
+            });
+        }
 
         if (regionBtn && colorBtn && !regionBtn.dataset.bound) {
             regionBtn.dataset.bound = 'true';
@@ -9919,9 +9962,10 @@
 
             // Use setTimeout to allow spinner to render before blocking thread
             setTimeout(() => {
+                const sourceImageData = patternApplyCurrentImageData;
                 const maskResult = (patternApplyMode === 'color')
-                    ? colorMask(ctx, x, y, PATTERN_APPLY_TOLERANCE)
-                    : floodFillMask(ctx, x, y, PATTERN_APPLY_TOLERANCE);
+                    ? colorMaskFromImageData(sourceImageData, x, y, patternApplyTolerance)
+                    : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
 
                 const highlight = maskToHighlight(maskResult.mask);
 
@@ -9956,9 +10000,10 @@
 
             setTimeout(() => {
                 // Final flood fill to get the definitive mask
+                const sourceImageData = patternApplyCurrentImageData;
                 const maskResult = (patternApplyMode === 'color')
-                    ? colorMask(ctx, x, y, PATTERN_APPLY_TOLERANCE)
-                    : floodFillMask(ctx, x, y, PATTERN_APPLY_TOLERANCE);
+                    ? colorMaskFromImageData(sourceImageData, x, y, patternApplyTolerance)
+                    : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
 
                 applyPatternToMask(patternUrl, maskResult.mask);
                 centerPreview.classList.remove('is-working');
