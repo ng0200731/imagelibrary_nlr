@@ -3998,6 +3998,18 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   margin: 0;
 }
 
+.pattern-apply-center-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pattern-apply-center-actions .button.is-active {
+  background: #2196f3;
+  border-color: #1e88e5;
+  color: #fff;
+}
+
 .pattern-apply-right {
   width: 20%;
 }
