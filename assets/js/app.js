@@ -9577,11 +9577,90 @@
             row.appendChild(thumbWrap);
             row.appendChild(name);
 
+            // Layout (JS-only)
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '10px';
+            row.style.padding = '6px 8px';
+            row.style.cursor = 'grab';
+
+            name.style.flex = '1';
+            name.style.minWidth = '0';
+
+            // Right-side controls
+            const controls = document.createElement('div');
+            controls.style.display = 'flex';
+            controls.style.alignItems = 'center';
+            controls.style.gap = '6px';
+
+            const tintLabel = document.createElement('span');
+            tintLabel.textContent = 'Tint';
+            tintLabel.style.fontSize = '11px';
+            tintLabel.style.color = '#666';
+
+            // Tint control: circular swatch + hidden native color input (cross-browser)
+            const colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.value = '#ffffff'; // default white (no tint)
+            colorInput.className = 'pattern-color-picker-input';
+            colorInput.title = 'Tint color for this pattern';
+            colorInput.style.position = 'absolute';
+            colorInput.style.opacity = '0';
+            colorInput.style.pointerEvents = 'none';
+            colorInput.style.width = '0';
+            colorInput.style.height = '0';
+
+            const swatch = document.createElement('button');
+            swatch.type = 'button';
+            swatch.className = 'pattern-color-swatch';
+            swatch.title = 'Tint color for this pattern';
+            swatch.style.width = '22px';
+            swatch.style.height = '22px';
+            swatch.style.borderRadius = '999px';
+            swatch.style.border = '2px solid #ddd';
+            swatch.style.background = colorInput.value;
+            swatch.style.cursor = 'pointer';
+            swatch.style.padding = '0';
+            swatch.style.display = 'inline-block';
+
+            // Prevent dragging when interacting
+            const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+            swatch.addEventListener('pointerdown', stop);
+            swatch.addEventListener('mousedown', stop);
+
+            // Open native color picker
+            swatch.addEventListener('click', (e) => {
+                e.stopPropagation();
+                colorInput.click();
+            });
+
+            colorInput.addEventListener('input', () => {
+                row.dataset.tint = colorInput.value;
+                swatch.style.background = colorInput.value;
+            });
+
+            row.dataset.tint = colorInput.value;
+
+            // Wrap so the hidden input can live in DOM
+            const tintWrap = document.createElement('div');
+            tintWrap.style.position = 'relative';
+            tintWrap.style.display = 'flex';
+            tintWrap.style.alignItems = 'center';
+            tintWrap.style.gap = '6px';
+
+            tintWrap.appendChild(tintLabel);
+            tintWrap.appendChild(swatch);
+            tintWrap.appendChild(colorInput);
+
+            controls.appendChild(tintWrap);
+            row.appendChild(controls);
+
             // Make the pattern row draggable
             row.draggable = true;
             row.addEventListener('dragstart', (e) => {
-                // Store the pattern's image URL for the drop event
+                // Store the pattern's image URL and tint for the drop event
                 e.dataTransfer.setData('text/plain', img.src);
+                e.dataTransfer.setData('tint', row.dataset.tint || '#ffffff');
                 e.dataTransfer.effectAllowed = 'copy';
             });
 
