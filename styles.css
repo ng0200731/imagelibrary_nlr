@@ -4098,6 +4098,17 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   width: 100%;
   height: 100%;
   display: block;
+  z-index: 1;
+}
+
+.pattern-apply-highlight-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .pattern-apply-center-preview.is-dragover {

@@ -9749,8 +9749,9 @@
 
     function loadPatternApplyBaseImageToCanvas(dataUrl) {
         const canvas = document.getElementById('pattern-apply-center-canvas');
+        const highlightCanvas = document.getElementById('pattern-apply-highlight-canvas');
         const hint = document.querySelector('.pattern-apply-center-preview__hint');
-        if (!canvas) return;
+        if (!canvas || !highlightCanvas) return;
 
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const img = new Image();
@@ -9775,6 +9776,8 @@
             
             canvas.width = canvasW;
             canvas.height = canvasH;
+            highlightCanvas.width = canvasW;
+            highlightCanvas.height = canvasH;
             
             // Draw image, store pixel data
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -9878,9 +9881,15 @@
     function initializePatternApplyPatternDrop() {
         const centerPreview = document.getElementById('pattern-apply-center-preview');
         const canvas = document.getElementById('pattern-apply-center-canvas');
-        if (!centerPreview || !canvas) return;
+        const overlayCanvas = document.getElementById('pattern-apply-highlight-canvas');
+        if (!centerPreview || !canvas || !overlayCanvas) return;
 
         const ctx = canvas.getContext('2d');
+        const overlayCtx = overlayCanvas.getContext('2d');
+
+        function clearOverlay() {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
         const resetBtn = document.getElementById('pattern-apply-reset-btn');
         const regionBtn = document.getElementById('pattern-apply-mode-region');
         const colorBtn = document.getElementById('pattern-apply-mode-color');
@@ -9937,6 +9946,7 @@
                     patternApplyBaseImageData.height
                 );
                 ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+                clearOverlay();
 
                 // Reset hover cache
                 patternApplyLastHover = { x: -1, y: -1, key: '' };
@@ -9969,18 +9979,23 @@
 
                 const highlight = maskToHighlight(maskResult.mask);
 
-                // Redraw current image, then highlight on top
-                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
-                ctx.putImageData(highlight, 0, 0);
+                // Draw semi-transparent base image and highlight on the OVERLAY canvas
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                overlayCtx.save();
+                overlayCtx.globalAlpha = 0.5;
+                overlayCtx.drawImage(patternApplyBaseImage, 0, 0, overlayCanvas.width, overlayCanvas.height);
+                overlayCtx.restore();
+                overlayCtx.putImageData(highlight, 0, 0);
+
                 centerPreview.classList.remove('is-working');
             }, 10);
         });
 
         centerPreview.addEventListener('dragleave', () => {
             centerPreview.classList.remove('is-dragover');
-            // Clear highlight
+            // Clear highlight overlay
             if (patternApplyBaseImageData) {
-                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+                clearOverlay();
             }
         });
 
