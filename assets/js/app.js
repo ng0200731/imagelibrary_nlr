@@ -1877,17 +1877,81 @@
         return card;
     }
 
+    // Helper function to ensure separators exist and are in the correct position
+    function ensureSeparatorsExist(loadedImages, currentSearchTags, allSelectedImageIds) {
+        // Check if separators already exist
+        const existingMatchedHeader = libraryGrid.querySelector('.results-separator--matched');
+        const existingOtherHeader = libraryGrid.querySelector('.results-separator--others');
+        
+        const shouldShowSeparators = !isPoolView && currentSearchTags.length > 0 && allSelectedImageIds.length > 0;
+        
+        if (!shouldShowSeparators) {
+            // Remove separators if they shouldn't be shown
+            if (existingMatchedHeader) existingMatchedHeader.remove();
+            if (existingOtherHeader) existingOtherHeader.remove();
+            return;
+        }
+        
+        const selectedImagesData = loadedImages.filter(({ image }) => allSelectedImageIds.includes(image.id));
+        
+        // Create or update "Matched" separator
+        if (!existingMatchedHeader) {
+            const matchedHeader = document.createElement('div');
+            matchedHeader.className = 'results-separator results-separator--matched';
+            matchedHeader.textContent = `Matched (${selectedImagesData.length})`;
+            // Insert at the beginning of the grid
+            if (libraryGrid.firstChild) {
+                libraryGrid.insertBefore(matchedHeader, libraryGrid.firstChild);
+            } else {
+                libraryGrid.appendChild(matchedHeader);
+            }
+        } else {
+            // Update count if separator exists
+            existingMatchedHeader.textContent = `Matched (${selectedImagesData.length})`;
+        }
+        
+        // Create or update "Other Images" separator
+        // Find the position: after all matched cards (selected or tag-selection)
+        const allCards = Array.from(libraryGrid.querySelectorAll('.library-card'));
+        const matchedCards = allCards.filter(card => 
+            card.classList.contains('selected') || card.classList.contains('tag-selection')
+        );
+        
+        if (matchedCards.length > 0 && !existingOtherHeader) {
+            const otherHeader = document.createElement('div');
+            otherHeader.className = 'results-separator results-separator--others';
+            otherHeader.textContent = 'Other Images (manual selection allowed)';
+            // Insert after the last matched card
+            const lastMatchedCard = matchedCards[matchedCards.length - 1];
+            lastMatchedCard.insertAdjacentElement('afterend', otherHeader);
+        } else if (matchedCards.length === 0 && existingOtherHeader) {
+            // Remove other header if there are no matched cards
+            existingOtherHeader.remove();
+        }
+    }
+
     // Display a page of images (3 rows)
     function displayImagePage(loadedImages, currentSearchTags, loadedPatterns = []) {
-        const imagesToShow = imagesPerRow * ROWS_PER_PAGE;
-        const startIndex = currentPage * imagesToShow;
-        const endIndex = startIndex + imagesToShow;
-        const pageImages = loadedImages.slice(startIndex, endIndex);
-
         // Check if we should show selected images at front (library view with selections, not pool view, first page only)
         const allSelectedImageIds = [...new Set([...selectedImages, ...tagSelectedImages])];
         const shouldShowSelectedAtFront = !isPoolView && allSelectedImageIds.length > 0 && currentPage === 0;
         const shouldShowNoMatchFoundHeader = !isPoolView && allSelectedImageIds.length === 0 && currentPage === 0 && currentSearchTags.length > 0;
+        // Track if selected images were shown at front (so we can skip them on subsequent pages)
+        const selectedImagesWereShownAtFront = !isPoolView && allSelectedImageIds.length > 0 && currentSearchTags.length > 0;
+        
+        // For pagination, we need to exclude selected images if they were shown at the front
+        // This ensures we paginate through non-selected images correctly
+        let imagesForPagination = loadedImages;
+        if (selectedImagesWereShownAtFront) {
+            imagesForPagination = loadedImages.filter(({ image }) => !allSelectedImageIds.includes(image.id));
+        }
+        
+        const imagesToShow = imagesPerRow * ROWS_PER_PAGE;
+        // When selected images are shown at front on page 0, we still show the first page of non-selected images
+        // So pagination should work normally - page 0 shows first N non-selected, page 1 shows next N, etc.
+        const startIndex = currentPage * imagesToShow;
+        const endIndex = startIndex + imagesToShow;
+        const pageImages = imagesForPagination.slice(startIndex, endIndex);
         
         // Clear any existing messages
         const existingMessage = libraryGrid.querySelector('.no-images-message');
@@ -1905,6 +1969,11 @@
             noMatchHeader.className = 'results-separator results-separator--matched';
             noMatchHeader.textContent = 'No Match Found';
             libraryGrid.appendChild(noMatchHeader);
+        }
+        
+        // Ensure separators exist even when loading more pages
+        if (currentPage > 0 && !isPoolView && currentSearchTags.length > 0 && allSelectedImageIds.length > 0) {
+            ensureSeparatorsExist(loadedImages, currentSearchTags, allSelectedImageIds);
         }
         
         if (shouldShowSelectedAtFront) {
@@ -1987,20 +2056,64 @@
         }
 
         // If we displayed matched images at the front, insert an "Other Images" header before the rest.
-        if (shouldShowSelectedAtFront && !isPoolView && currentSearchTags.length > 0) {
-            const otherHeader = document.createElement('div');
-            otherHeader.className = 'results-separator results-separator--others';
-            otherHeader.textContent = 'Other Images (manual selection allowed)';
-            libraryGrid.appendChild(otherHeader);
+        // Also ensure it exists when loading more pages if separators should be shown
+        const shouldShowOtherHeader = selectedImagesWereShownAtFront && !isPoolView && currentSearchTags.length > 0;
+        if (shouldShowOtherHeader) {
+            // Check if it already exists
+            const existingOtherHeader = libraryGrid.querySelector('.results-separator--others');
+            if (!existingOtherHeader) {
+                const otherHeader = document.createElement('div');
+                otherHeader.className = 'results-separator results-separator--others';
+                otherHeader.textContent = 'Other Images (manual selection allowed)';
+                // Find where to insert it - after matched images or after matched header
+                const matchedHeader = libraryGrid.querySelector('.results-separator--matched');
+                const matchedCards = Array.from(libraryGrid.querySelectorAll('.library-card.selected, .library-card.tag-selection'));
+                if (matchedCards.length > 0) {
+                    // Insert after last matched card
+                    matchedCards[matchedCards.length - 1].insertAdjacentElement('afterend', otherHeader);
+                } else if (matchedHeader) {
+                    // Insert after matched header if no matched cards yet
+                    matchedHeader.insertAdjacentElement('afterend', otherHeader);
+                } else {
+                    libraryGrid.appendChild(otherHeader);
+                }
+            }
         }
 
-        // Then display page images (skip images already shown at the front to avoid "chosen" duplicates)
+        // Debug logging for Load More - always log when page > 0
+        if (currentPage > 0) {
+            console.log('[Load More Debug - Page ' + currentPage + ']', {
+                currentPage,
+                totalLoadedImages: loadedImages.length,
+                selectedCount: allSelectedImageIds.length,
+                selectedImageIds: allSelectedImageIds,
+                selectedImagesWereShownAtFront,
+                filteredImagesCount: imagesForPagination.length,
+                pageImagesCount: pageImages.length,
+                startIndex,
+                endIndex,
+                imagesToShow,
+                firstFewImageIds: pageImages.slice(0, 3).map(item => item?.image?.id),
+                isPoolView,
+                currentSearchTagsLength: currentSearchTags.length
+            });
+        }
+        
+        // Log if pageImages is empty when it shouldn't be
+        if (pageImages.length === 0 && currentPage > 0) {
+            console.warn('[Load More Warning] pageImages is empty', {
+                currentPage,
+                imagesForPaginationLength: imagesForPagination.length,
+                startIndex,
+                endIndex,
+                imagesToShow,
+                shouldHaveImages: imagesForPagination.length > startIndex,
+                selectedImagesWereShownAtFront,
+                allSelectedImageIdsLength: allSelectedImageIds.length
+            });
+        }
+        
         pageImages.forEach(({ image, index, imageSrc }) => {
-            const isSelected = allSelectedImageIds.includes(image.id);
-            // If we've already shown selected images at the front, skip them here
-            if (shouldShowSelectedAtFront && isSelected) {
-                return;
-            }
             const card = createImageCard(image, index, imageSrc, currentSearchTags, false);
             libraryGrid.appendChild(card);
             cardsAdded++;
@@ -2097,7 +2210,9 @@
 
     // Load more images (3 more rows)
     function loadMoreImages() {
+        console.log('[loadMoreImages] Called, currentPage before increment:', currentPage);
         currentPage++;
+        console.log('[loadMoreImages] currentPage after increment:', currentPage);
         // Recalculate images per row in case window was resized
         calculateImagesPerRow();
         
@@ -2143,312 +2258,49 @@
             .filter(item => item !== null);
 
         const currentSearchTags = searchTags.map(tag => tag.text);
+        const allSelectedImageIds = [...new Set([...selectedImages, ...tagSelectedImages])];
+        const shouldShowSeparators = !isPoolView && currentSearchTags.length > 0 && allSelectedImageIds.length > 0;
+        
+        // Separate matched images from other images
+        const matchedImages = [];
+        const otherImages = [];
+        
+        loadedImages.forEach((item) => {
+            if (allSelectedImageIds.includes(item.image.id)) {
+                matchedImages.push(item);
+            } else {
+                otherImages.push(item);
+            }
+        });
         
         // Clear grid and display all images
         libraryGrid.innerHTML = '';
         
-        // Display all images
-        loadedImages.forEach(({ image, index, imageSrc }) => {
-            const card = document.createElement('div');
-            card.className = 'preview-card library-card';
-            card.dataset.imageId = image.id;
-
-            const img = document.createElement('img');
-            img.src = imageSrc;
-
-            img.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleImageSelection(image.id, card);
-            });
-
-            img.style.cursor = 'pointer';
-            if (isPoolView) {
-                card.style.cursor = 'pointer';
-            }
-
-            card.appendChild(img);
-            
-            // Add hover event listeners to show all tags modal
-            let hoverTimeout;
-            card.addEventListener('mouseenter', (e) => {
-                clearTimeout(hoverTimeout);
-                hoverTimeout = setTimeout(() => {
-                    showAllTagsModal(card, image, e);
-                }, 300);
-            });
-            
-            card.addEventListener('mouseleave', () => {
-                clearTimeout(hoverTimeout);
-                hideAllTagsModal();
-            });
-
-            if (image.width || image.length) {
-                const dimensionTooltip = document.createElement('div');
-                dimensionTooltip.className = 'dimension-tooltip';
-                const widthText = image.width ? `Width: ${image.width}` : '';
-                const lengthText = image.length ? `Length: ${image.length}` : '';
-                const separator = (widthText && lengthText) ? ' | ' : '';
-                dimensionTooltip.textContent = widthText + separator + lengthText;
-                card.appendChild(dimensionTooltip);
-            }
-
-            const eyeIcon = document.createElement('div');
-            eyeIcon.className = 'image-preview-eye';
-            eyeIcon.textContent = '1:1';
-            eyeIcon.title = 'Preview full size image';
-
-            eyeIcon.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const libraryTitle = document.querySelector('#page-library .title');
-                const isSelectionPoolView = isPoolView || (libraryTitle && libraryTitle.textContent.includes('Selection Pool'));
-
-                if (isSelectionPoolView) {
-                    showSelectionPoolPreview(image, allImagesToDisplay, index);
-                } else {
-                    showImagePreviewOverlay(imageSrc, image);
-                }
-            });
-
-            card.appendChild(eyeIcon);
-
-            // Ruler icon (real size based on mm dimensions)
-            if (image.width || image.length) {
-                const rulerIcon = document.createElement('div');
-                rulerIcon.className = 'image-preview-ruler';
-                rulerIcon.innerHTML = '📏';
-                rulerIcon.title = 'Preview real size (1:1 based on dimensions)';
-
-                rulerIcon.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Ruler clicked - showing real size for image:', image.id);
-                    showRealSizeOverlay(imageSrc, image);
-                });
-
-                card.appendChild(rulerIcon);
-            }
-
-            if (isPoolView) {
-                const bookletIcon = document.createElement('div');
-                bookletIcon.className = 'image-preview-booklet';
-                bookletIcon.textContent = '📖';
-                bookletIcon.title = 'Open lightbox with navigation';
-
-                bookletIcon.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openLibraryLightbox(index);
-                });
-
-                card.appendChild(bookletIcon);
-            }
-
-            const matchingTags = getMatchingTags(image.tags || [], currentSearchTags);
-            const allImageTags = image.tags || [];
-
-            const objectivePrefixes = ['width:', 'length:', 'book:', 'page:', 'row:', 'column:', 'type:', 'material:', 'remark:', 'pattern:', 'brand:', 'color:'];
-            const subjectiveTags = allImageTags.filter(tag => {
-                const tagLower = tag.toLowerCase();
-                return !tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
-            });
-
-            // Determine matching info for overlay + selection, with AND/OR awareness
-            let matchingSearchTagsCount = 0;
-            let matchesAllSearchTags = false;
-            if (currentSearchTags.length > 0) {
-                // Sync exactWordMode with button state before matching logic
-                if (exactWordToggleBtn) {
-                    const buttonIsActive = exactWordToggleBtn.classList.contains('is-active');
-                    if (exactWordMode !== buttonIsActive) {
-                        console.warn('[SYNC] exactWordMode out of sync! Variable:', exactWordMode, 'Button:', buttonIsActive);
-                        exactWordMode = buttonIsActive;
-                    }
-                }
-
-                const imageTagLower = allImageTags.map(t => t.toLowerCase());
-                const subjectiveImageTags = imageTagLower.filter(t =>
-                    !t.includes(':') && !objectivePrefixes.some(prefix => t.startsWith(prefix))
-                );
-
-                matchingSearchTagsCount = currentSearchTags.filter(searchTag => {
-                    const searchLower = searchTag.toLowerCase();
-                    if (!searchLower) return false;
-                    return subjectiveImageTags.some(imageTag => {
-                        return exactWordMode
-                            ? imageTag === searchLower
-                            : imageTag.includes(searchLower);
-                    });
-                }).length;
-
-                matchesAllSearchTags = currentSearchTags.every(searchTag => {
-                    const searchLower = searchTag.toLowerCase();
-                    if (!searchLower) return false;
-                    return subjectiveImageTags.some(imageTag => {
-                        return exactWordMode
-                            ? imageTag === searchLower
-                            : imageTag.includes(searchLower);
-                    });
-                });
-            }
-
-            const isAndMode = (tagSearchMode === 'AND');
-            const isTagSelected = isAndMode ? matchesAllSearchTags : tagSelectedImages.includes(image.id);
-
-            if (subjectiveTags.length > 0) {
-                const tagOverlay = document.createElement('div');
-                tagOverlay.className = 'tag-overlay';
-
-                const matchingSubjectiveTags = matchingTags.filter(tag => {
-                    const tagLower = tag.toLowerCase();
-                    return !tagLower.includes(':') && !objectivePrefixes.some(prefix => tagLower.startsWith(prefix));
-                });
-
-                const shouldHighlightOverlay = tagSearchMode === 'AND'
-                    ? isTagSelected && matchingSubjectiveTags.length > 0
-                    : matchingSubjectiveTags.length > 0;
-
-                if (shouldHighlightOverlay) {
-                    tagOverlay.classList.add('has-matches');
-                }
-
-                if (shouldHighlightOverlay) {
-                    // Determine primary/group tag from chip order (left → right), including partial matches.
-                    let primaryTagLower = null;
-                    const chipContainer = document.getElementById('library-search-chips');
-                    if (chipContainer) {
-                        const chipNodes = Array.from(chipContainer.querySelectorAll('.search-chip'));
-                        const chipTagsInOrder = chipNodes
-                            .map(chip => (chip.dataset.tag || '').toLowerCase())
-                            .filter(tag => tag);
-
-                        for (const chipTag of chipTagsInOrder) {
-                            if (matchingSubjectiveTags.some(mt => {
-                                const mtLower = mt.toLowerCase();
-                                // Match if tag equals chip tag, or if pattern:tag contains chip tag (e.g., "pattern:twill" contains "twill")
-                                if (exactWordMode) {
-                                    return mtLower === chipTag || (mtLower.startsWith('pattern:') && mtLower.substring(8) === chipTag);
-                                } else {
-                                    return mtLower.includes(chipTag) || (mtLower.startsWith('pattern:') && mtLower.includes(chipTag));
-                                }
-                            })) {
-                                primaryTagLower = chipTag;
-                                break;
-                            }
-                        }
-                    }
-
-                    let overlayColor = null;
-                    if (primaryTagLower && searchTagColors[primaryTagLower]) {
-                        overlayColor = searchTagColors[primaryTagLower];
-                    }
-
-                    if (!overlayColor) {
-                        for (const st of currentSearchTags) {
-                            const stLower = (st || '').toLowerCase();
-                            if (!stLower) continue;
-                            const c = searchTagColors[stLower];
-                            if (!c) continue;
-                            const hasMatch = matchingSubjectiveTags.some(mt => {
-                                const mtLower = mt.toLowerCase();
-                                // Match if tag equals search tag, or if pattern:tag contains search tag (e.g., "pattern:twill" contains "twill")
-                                if (exactWordMode) {
-                                    return mtLower === stLower || (mtLower.startsWith('pattern:') && mtLower.substring(8) === stLower);
-                                } else {
-                                    return mtLower.includes(stLower) || (mtLower.startsWith('pattern:') && mtLower.includes(stLower));
-                                }
-                            });
-                            if (hasMatch) {
-                                overlayColor = c;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (overlayColor) {
-                        tagOverlay.style.backgroundColor = overlayColor;
-                        tagOverlay.style.color = '#ffffff';
-                    }
-                }
-
-                const isAndAllTagsMatch = (tagSearchMode === 'AND') && isTagSelected && currentSearchTags.length > 1;
-                tagOverlay.textContent = subjectiveTags.slice(0, 3).join(', ');
-                if (subjectiveTags.length > 3) {
-                    tagOverlay.textContent += ` +${subjectiveTags.length - 3}`;
-                }
-
-                if (isAndAllTagsMatch) {
-                    const dupBadge = document.createElement('div');
-                    dupBadge.textContent = 'DUP';
-                    dupBadge.style.position = 'absolute';
-                    dupBadge.style.top = '4px';
-                    dupBadge.style.left = '4px';
-                    dupBadge.style.padding = '2px 4px';
-                    dupBadge.style.fontSize = '10px';
-                    dupBadge.style.fontWeight = '600';
-                    dupBadge.style.backgroundColor = 'rgba(255,0,0,0.9)';
-                    dupBadge.style.color = '#ffffff';
-                    dupBadge.style.borderRadius = '3px';
-                    dupBadge.style.zIndex = '2';
-                    tagOverlay.appendChild(dupBadge);
-                }
-
-                card.appendChild(tagOverlay);
-            }
-
-            // Add creator email display (ownership)
-            if (image.ownership) {
-                const creatorOverlay = document.createElement('div');
-                creatorOverlay.className = 'creator-overlay';
-                const emailPrefix = window.getEmailPrefix(image.ownership);
-                creatorOverlay.textContent = emailPrefix;
-                creatorOverlay.title = `Created by: ${image.ownership}`;
-                card.appendChild(creatorOverlay);
-            }
-
-            const wasAlreadySelected = selectedImages.includes(image.id);
-            const hasMatchingTags = (tagSearchMode === 'OR') && currentSearchTags.length > 0 && matchingTags.length > 0;
-
-            // Debug for happy image
-            if (image.tags && image.tags.some(t => t.toLowerCase() === 'happy')) {
-                console.log('[HAPPY DEBUG 2]', {
-                    imageId: image.id,
-                    wasAlreadySelected,
-                    isInTagSelectedImages: tagSelectedImages.includes(image.id),
-                    tagSearchMode,
-                    currentSearchTags,
-                    isAndMode,
-                    isTagSelected,
-                    hasMatchingTags
-                });
-            }
-
-            // In AND mode, treat "has matching tags" only when image matches ALL active tags.
-            const effectiveHasMatchingTags = isAndMode
-                ? isTagSelected
-                : hasMatchingTags;
-
-            // In AND mode with active tags, only true AND matches should appear selected.
-            const shouldShowSelected = (isAndMode && currentSearchTags.length > 0)
-                ? effectiveHasMatchingTags
-                : (wasAlreadySelected || effectiveHasMatchingTags);
-
-            if (shouldShowSelected) {
-                card.classList.add('selected');
-
-                if (isPoolView) {
-                    card.classList.add('pool-view');
-                }
-
-                card.classList.remove('manual-selection', 'tag-selection');
-                if (effectiveHasMatchingTags) {
-                    card.classList.add('tag-selection');
-                } else if (wasAlreadySelected) {
-                    card.classList.add('manual-selection');
-                }
-            }
-
+        // Add "Matched" separator if needed
+        if (shouldShowSeparators && matchedImages.length > 0) {
+            const matchedHeader = document.createElement('div');
+            matchedHeader.className = 'results-separator results-separator--matched';
+            matchedHeader.textContent = `Matched (${matchedImages.length})`;
+            libraryGrid.appendChild(matchedHeader);
+        }
+        
+        // Display matched images first
+        matchedImages.forEach(({ image, index, imageSrc }) => {
+            const card = createImageCard(image, index, imageSrc, currentSearchTags, false);
+            libraryGrid.appendChild(card);
+        });
+        
+        // Add "Other Images" separator if needed
+        if (shouldShowSeparators && matchedImages.length > 0 && otherImages.length > 0) {
+            const otherHeader = document.createElement('div');
+            otherHeader.className = 'results-separator results-separator--others';
+            otherHeader.textContent = 'Other Images (manual selection allowed)';
+            libraryGrid.appendChild(otherHeader);
+        }
+        
+        // Display other images
+        otherImages.forEach(({ image, index, imageSrc }) => {
+            const card = createImageCard(image, index, imageSrc, currentSearchTags, false);
             libraryGrid.appendChild(card);
         });
         
