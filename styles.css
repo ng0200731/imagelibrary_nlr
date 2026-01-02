@@ -3997,9 +3997,23 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 }
 
 /* Pattern list inside right panel */
+.pattern-apply-pattern-search {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.pattern-apply-pattern-search input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
 .pattern-apply-pattern-list {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .pattern-apply-pattern-row {

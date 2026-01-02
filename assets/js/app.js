@@ -9525,7 +9525,52 @@
         }
     }
 
-    // Load patterns for Pattern Apply right panel (list view)
+    let patternApplyPatterns = []; // Store patterns for filtering
+
+    // Render the pattern list in the Pattern Apply right panel
+    function renderPatternApplyList(patternsToRender) {
+        const listEl = document.getElementById('pattern-apply-pattern-list');
+        if (!listEl) return;
+
+        listEl.innerHTML = '';
+
+        if (!patternsToRender || patternsToRender.length === 0) {
+            listEl.innerHTML = '<p class="text">No patterns found.</p>';
+            return;
+        }
+
+        patternsToRender.forEach(pattern => {
+            const row = document.createElement('div');
+            row.className = 'pattern-apply-pattern-row';
+            row.dataset.patternId = pattern.id;
+
+            const thumbWrap = document.createElement('div');
+            thumbWrap.className = 'pattern-apply-pattern-thumb-wrap';
+
+            const img = document.createElement('img');
+            img.className = 'pattern-apply-pattern-thumb';
+            const filename = (pattern.filepath || '').split(/[/\\]/).pop();
+            img.src = filename ? `${API_URL}/uploads/patterns/${filename}` : '';
+            img.alt = pattern.name || 'Pattern';
+            img.loading = 'lazy';
+            img.onerror = function() {
+                this.style.display = 'none';
+                thumbWrap.innerHTML = '<div class="pattern-apply-pattern-thumb-fallback">📄</div>';
+            };
+
+            const name = document.createElement('div');
+            name.className = 'pattern-apply-pattern-name';
+            name.textContent = pattern.name || 'Unnamed Pattern';
+
+            thumbWrap.appendChild(img);
+            row.appendChild(thumbWrap);
+            row.appendChild(name);
+
+            listEl.appendChild(row);
+        });
+    }
+
+    // Fetch patterns for Pattern Apply right panel (list view)
     async function loadPatternsForPatternApply() {
         const listEl = document.getElementById('pattern-apply-pattern-list');
         if (!listEl) return;
@@ -9549,43 +9594,26 @@
             }
 
             const patterns = await response.json();
-            listEl.innerHTML = '';
 
-            if (!patterns || patterns.length === 0) {
-                listEl.innerHTML = '<p class="text">No patterns uploaded yet.</p>';
-                return;
+            patternApplyPatterns = Array.isArray(patterns) ? patterns : [];
+
+            // Initial render
+            renderPatternApplyList(patternApplyPatterns);
+
+            // Hook up search input (once)
+            const searchInput = document.getElementById('pattern-apply-search-input');
+            if (searchInput && !searchInput.dataset.bound) {
+                searchInput.dataset.bound = 'true';
+                searchInput.addEventListener('input', () => {
+                    const q = (searchInput.value || '').trim().toLowerCase();
+                    if (!q) {
+                        renderPatternApplyList(patternApplyPatterns);
+                        return;
+                    }
+                    const filtered = patternApplyPatterns.filter(p => (p.name || '').toLowerCase().includes(q));
+                    renderPatternApplyList(filtered);
+                });
             }
-
-            patterns.forEach(pattern => {
-                const row = document.createElement('div');
-                row.className = 'pattern-apply-pattern-row';
-                row.dataset.patternId = pattern.id;
-
-                const thumbWrap = document.createElement('div');
-                thumbWrap.className = 'pattern-apply-pattern-thumb-wrap';
-
-                const img = document.createElement('img');
-                img.className = 'pattern-apply-pattern-thumb';
-                const filename = (pattern.filepath || '').split(/[/\\]/).pop();
-                img.src = filename ? `${API_URL}/uploads/patterns/${filename}` : '';
-                img.alt = pattern.name || 'Pattern';
-                img.loading = 'lazy';
-                img.onerror = function() {
-                    // simple fallback if image missing
-                    this.style.display = 'none';
-                    thumbWrap.innerHTML = '<div class="pattern-apply-pattern-thumb-fallback">📄</div>';
-                };
-
-                const name = document.createElement('div');
-                name.className = 'pattern-apply-pattern-name';
-                name.textContent = pattern.name || 'Unnamed Pattern';
-
-                thumbWrap.appendChild(img);
-                row.appendChild(thumbWrap);
-                row.appendChild(name);
-
-                listEl.appendChild(row);
-            });
         } catch (error) {
             console.error('Error loading patterns for pattern apply:', error);
             listEl.innerHTML = '<p class="text">Error loading patterns.</p>';
