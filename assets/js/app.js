@@ -9972,7 +9972,9 @@
 
             // Use setTimeout to allow spinner to render before blocking thread
             setTimeout(() => {
-                const sourceImageData = patternApplyCurrentImageData;
+                // IMPORTANT: always compute masks from the ORIGINAL base image,
+                // so already-applied patterns do not affect future region/color detection.
+                const sourceImageData = patternApplyBaseImageData;
                 const maskResult = (patternApplyMode === 'color')
                     ? colorMaskFromImageData(sourceImageData, x, y, patternApplyTolerance)
                     : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
@@ -10015,7 +10017,9 @@
 
             setTimeout(() => {
                 // Final flood fill to get the definitive mask
-                const sourceImageData = patternApplyCurrentImageData;
+                // IMPORTANT: always compute masks from the ORIGINAL base image,
+                // so already-applied patterns do not affect future region/color detection.
+                const sourceImageData = patternApplyBaseImageData;
                 const maskResult = (patternApplyMode === 'color')
                     ? colorMaskFromImageData(sourceImageData, x, y, patternApplyTolerance)
                     : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
