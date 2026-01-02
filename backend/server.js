@@ -2487,8 +2487,8 @@ app.delete('/admin/users/:id', async (req, res) => {
             return res.status(403).json({ error: 'Admin or level 3 access required' });
         }
 
-        // Prevent admin from deleting themselves
-        if (session.admin_user_id === userId) {
+        // Prevent user from deleting themselves
+        if (sessionUser.id === userId) {
             return res.status(400).json({ error: 'You cannot delete your own account' });
         }
 
@@ -2497,29 +2497,26 @@ app.delete('/admin/users/:id', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Clean up sessions for this user
-        db.prepare(`
-            DELETE FROM login_sessions
-            WHERE user_id = ?
-        `).run(userId);
-
         // Get the user's email to delete all case-insensitive duplicates
         const userToDelete = db.prepare('SELECT email FROM users WHERE id = ?').get(userId);
         if (userToDelete) {
             const emailLower = userToDelete.email.toLowerCase();
-            
-            // Get all user IDs with this email (case-insensitive) to clean up sessions
+
+            // Get all user IDs with this email (case-insensitive)
             const duplicateUsers = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').all(emailLower);
-            
-            // Delete sessions for all duplicate users
-            for (const u of duplicateUsers) {
-                db.prepare('DELETE FROM login_sessions WHERE user_id = ?').run(u.id);
+            const userIds = duplicateUsers.map(u => u.id);
+
+            if (userIds.length > 0) {
+                // Delete sessions for ALL duplicates in a single query
+                const placeholders = userIds.map(() => '?').join(',');
+                db.prepare(`DELETE FROM login_sessions WHERE user_id IN (${placeholders})`).run(...userIds);
             }
-            
-            // Delete all users with the same email (case-insensitive)
+
+            // Now delete all users with the same email (case-insensitive)
             db.prepare('DELETE FROM users WHERE LOWER(email) = ?').run(emailLower);
         } else {
-            // Fallback: delete by id only
+            // Fallback: delete sessions then delete by id only
+            db.prepare('DELETE FROM login_sessions WHERE user_id = ?').run(userId);
             db.prepare('DELETE FROM users WHERE id = ?').run(userId);
         }
 
