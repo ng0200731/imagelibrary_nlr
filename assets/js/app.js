@@ -9566,6 +9566,8 @@
             row.appendChild(thumbWrap);
             row.appendChild(name);
 
+            // Hover preview disabled (removed mouse over effect on Pattern Apply)
+
             listEl.appendChild(row);
         });
     }
@@ -9618,6 +9620,95 @@
             console.error('Error loading patterns for pattern apply:', error);
             listEl.innerHTML = '<p class="text">Error loading patterns.</p>';
         }
+    }
+
+    // Pattern Apply hover preview modal helpers
+    function showPatternHoverModal(imageUrl, targetElement) {
+        const modal = document.getElementById('pattern-hover-modal');
+        const img = document.getElementById('pattern-hover-modal-img');
+        if (!modal || !img || !imageUrl || !targetElement) return;
+
+        img.src = imageUrl;
+        modal.classList.remove('is-hidden');
+
+        const content = modal.querySelector('.pattern-hover-modal__content');
+        const rightPanel = document.querySelector('.pattern-apply-right');
+        if (!content || !rightPanel) return;
+
+        const gap = 12;
+        const thumbRect = targetElement.getBoundingClientRect();
+        const panelRect = rightPanel.getBoundingClientRect();
+        const viewportH = window.innerHeight;
+
+        // Allowed area is ONLY the Left (40%) + Center (40%) sections
+        // i.e., everything strictly left of the right panel
+        const maxAllowedRight = panelRect.left - gap;
+
+        // Force the preview image to render at 1:1 pixel size
+        // (use natural sizes if available; otherwise fall back to an upper bound)
+        const naturalW = img.naturalWidth || 0;
+        const naturalH = img.naturalHeight || 0;
+
+        const applyPosition = () => {
+            const imgW = img.naturalWidth || naturalW || 600;
+            const imgH = img.naturalHeight || naturalH || 600;
+
+            // Ensure true 1:1 sizing
+            img.style.width = `${imgW}px`;
+            img.style.height = `${imgH}px`;
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+
+            // Prefer to open to the right of the thumbnail
+            let left = thumbRect.right + gap;
+            let top = thumbRect.top;
+
+            // If opening right would overlap the 20% right column, flip to left
+            if (left + imgW > panelRect.left - gap) {
+                left = thumbRect.left - gap - imgW;
+            }
+
+            // Clamp horizontally so the preview NEVER crosses into the right 20% column
+            // Note: if the image is too wide to fit, we anchor it to the left gap.
+            const latestPanelRect = rightPanel.getBoundingClientRect();
+            const maxAllowedRightEdge = latestPanelRect.left - gap;
+
+            if (imgW >= (maxAllowedRightEdge - gap)) {
+                left = gap;
+            } else {
+                left = Math.max(gap, Math.min(left, maxAllowedRightEdge - imgW));
+            }
+
+            // Clamp vertically into viewport
+            top = Math.max(gap, Math.min(top, viewportH - imgH - gap));
+
+            // Position the content box directly (no translate centering)
+            content.style.left = `${left}px`;
+            content.style.top = `${top}px`;
+            content.style.transform = 'none';
+            content.style.maxWidth = 'none';
+        };
+
+        // If image already loaded, position now; otherwise wait for load
+        if (img.complete && img.naturalWidth) {
+            applyPosition();
+        } else {
+            img.onload = () => applyPosition();
+            img.onerror = () => {
+                // Fail gracefully
+                modal.classList.add('is-hidden');
+                img.src = '';
+            };
+        }
+    }
+
+    function hidePatternHoverModal() {
+        const modal = document.getElementById('pattern-hover-modal');
+        const img = document.getElementById('pattern-hover-modal-img');
+        if (!modal || !img) return;
+
+        modal.classList.add('is-hidden');
+        img.src = '';
     }
 
     // Function to load and display pattern thumbnails in right panel
