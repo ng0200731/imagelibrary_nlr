@@ -3003,6 +3003,7 @@
             // Pattern Apply page initialization
             await loadPatternsForPatternApply();
             initializePatternApplyDropzone();
+            initializePatternApplyPatternDrop();
         }
     }
 
@@ -9528,6 +9529,14 @@
 
     let patternApplyPatterns = []; // Store patterns for filtering
 
+    // Pattern Apply canvas state
+    let patternApplyBaseImage = null; // HTMLImageElement
+    let patternApplyBaseImageData = null; // ImageData (original pixels)
+    let patternApplyCurrentImageData = null; // ImageData (mutable / after applying patterns)
+    let patternApplyPatternImageCache = new Map(); // url -> HTMLImageElement
+    let patternApplyLastHover = { x: -1, y: -1, key: '' };
+    const PATTERN_APPLY_TOLERANCE = 20; // flood fill color tolerance
+
     // Render the pattern list in the Pattern Apply right panel
     function renderPatternApplyList(patternsToRender) {
         const listEl = document.getElementById('pattern-apply-pattern-list');
@@ -9567,7 +9576,13 @@
             row.appendChild(thumbWrap);
             row.appendChild(name);
 
-            // Hover preview disabled (removed mouse over effect on Pattern Apply)
+            // Make the pattern row draggable
+            row.draggable = true;
+            row.addEventListener('dragstart', (e) => {
+                // Store the pattern's image URL for the drop event
+                e.dataTransfer.setData('text/plain', img.src);
+                e.dataTransfer.effectAllowed = 'copy';
+            });
 
             listEl.appendChild(row);
         });
@@ -9702,13 +9717,8 @@
                 // Set image as dropzone background
                 dropzone.style.backgroundImage = `url(${dataUrl})`;
 
-                // Mirror the exact same image into the center section preview
-                const centerPreview = document.getElementById('pattern-apply-center-preview');
-                const centerHint = centerPreview ? centerPreview.querySelector('.pattern-apply-center-preview__hint') : null;
-                if (centerPreview) {
-                    centerPreview.style.backgroundImage = `url(${dataUrl})`;
-                    if (centerHint) centerHint.style.display = 'none';
-                }
+                // Mirror the exact same image into the center section canvas
+                loadPatternApplyBaseImageToCanvas(dataUrl);
 
                 // Hide helper text once an image is present
                 if (dropText) dropText.style.display = 'none';
@@ -9717,6 +9727,211 @@
                 if (previewGrid) previewGrid.innerHTML = '';
             };
             reader.readAsDataURL(file);
+        }
+    }
+
+    // --- Pattern Apply Canvas & Flood Fill ---
+
+    function loadPatternApplyBaseImageToCanvas(dataUrl) {
+        const canvas = document.getElementById('pattern-apply-center-canvas');
+        const hint = document.querySelector('.pattern-apply-center-preview__hint');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+            patternApplyBaseImage = img;
+            
+            // Scale canvas to fit image while maintaining aspect ratio
+            const parent = canvas.parentElement;
+            const parentRect = parent.getBoundingClientRect();
+            const imgAspectRatio = img.width / img.height;
+            const parentAspectRatio = parentRect.width / parentRect.height;
+
+            let canvasW, canvasH;
+            if (imgAspectRatio > parentAspectRatio) {
+                canvasW = parentRect.width;
+                canvasH = parentRect.width / imgAspectRatio;
+            } else {
+                canvasH = parentRect.height;
+                canvasW = parentRect.height * imgAspectRatio;
+            }
+            
+            canvas.width = canvasW;
+            canvas.height = canvasH;
+            
+            // Draw image, store pixel data
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            patternApplyBaseImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            patternApplyCurrentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            if (hint) hint.style.display = 'none';
+        };
+        img.src = dataUrl;
+    }
+
+    // Flood fill utility
+    function floodFill(ctx, x, y, fillColor, tolerance) {
+        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+        const { width, height, data } = imageData;
+        const stack = [[x, y]];
+        const initialColor = getColorAtPixel(data, width, x, y);
+        const visited = new Uint8Array(width * height);
+
+        if (colorsAreSimilar(initialColor, fillColor, tolerance)) {
+            return null; // Clicked on an area that's already the target color
+        }
+
+        const highlightMask = new Uint8ClampedArray(width * height * 4);
+
+        while (stack.length > 0) {
+            const [curX, curY] = stack.pop();
+            const pixelIndex = (curY * width + curX);
+
+            if (curX < 0 || curX >= width || curY < 0 || curY >= height || visited[pixelIndex]) {
+                continue;
+            }
+
+            const currentColor = getColorAtPixel(data, width, curX, curY);
+
+            if (colorsAreSimilar(initialColor, currentColor, tolerance)) {
+                visited[pixelIndex] = 1;
+
+                // Set highlight mask pixel
+                const dataIndex = pixelIndex * 4;
+                highlightMask[dataIndex] = 255; // R
+                highlightMask[dataIndex + 1] = 255; // G
+                highlightMask[dataIndex + 2] = 0;   // B
+                highlightMask[dataIndex + 3] = 100; // A (semi-transparent)
+
+                stack.push([curX + 1, curY]);
+                stack.push([curX - 1, curY]);
+                stack.push([curX, curY + 1]);
+                stack.push([curX, curY - 1]);
+            }
+        }
+        return new ImageData(highlightMask, width, height);
+    }
+
+    function getColorAtPixel(data, width, x, y) {
+        const i = (y * width + x) * 4;
+        return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+    }
+
+    function colorsAreSimilar(c1, c2, tolerance) {
+        const dr = c1[0] - c2[0];
+        const dg = c1[1] - c2[1];
+        const db = c1[2] - c2[2];
+        // Optional: include alpha in distance check if needed
+        // const da = c1[3] - c2[3]; 
+        return (dr * dr + dg * dg + db * db) < (tolerance * tolerance);
+    }
+
+    // Pattern Apply - Drag pattern onto center preview
+    function initializePatternApplyPatternDrop() {
+        const centerPreview = document.getElementById('pattern-apply-center-preview');
+        const canvas = document.getElementById('pattern-apply-center-canvas');
+        if (!centerPreview || !canvas) return;
+
+        const ctx = canvas.getContext('2d');
+
+        centerPreview.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (!patternApplyBaseImageData) return;
+            
+            centerPreview.classList.add('is-dragover');
+            e.dataTransfer.dropEffect = 'copy';
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor(e.clientX - rect.left);
+            const y = Math.floor(e.clientY - rect.top);
+
+            const hoverKey = `${x},${y}`;
+            if (patternApplyLastHover.key === hoverKey) return; // Avoid re-computing for same pixel
+
+            patternApplyLastHover.key = hoverKey;
+            centerPreview.classList.add('is-working');
+
+            // Use setTimeout to allow spinner to render before blocking thread
+            setTimeout(() => {
+                const highlightMask = floodFill(ctx, x, y, [0,0,0,0], PATTERN_APPLY_TOLERANCE);
+                
+                // Redraw original image, then highlight on top
+                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+                if (highlightMask) {
+                    ctx.putImageData(highlightMask, 0, 0);
+                }
+                centerPreview.classList.remove('is-working');
+            }, 10);
+        });
+
+        centerPreview.addEventListener('dragleave', () => {
+            centerPreview.classList.remove('is-dragover');
+            // Clear highlight
+            if (patternApplyBaseImageData) {
+                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+            }
+        });
+
+        centerPreview.addEventListener('drop', (e) => {
+            e.preventDefault();
+            centerPreview.classList.remove('is-dragover');
+            if (!patternApplyBaseImageData) return;
+
+            const patternUrl = e.dataTransfer.getData('text/plain');
+            if (!patternUrl) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor(e.clientX - rect.left);
+            const y = Math.floor(e.clientY - rect.top);
+
+            centerPreview.classList.add('is-working');
+
+            setTimeout(() => {
+                // Final flood fill to get the definitive mask
+                const fillMask = floodFill(ctx, x, y, [0,0,0,0], PATTERN_APPLY_TOLERANCE);
+
+                if (fillMask) {
+                    applyPatternToMask(patternUrl, fillMask);
+                }
+                centerPreview.classList.remove('is-working');
+            }, 10);
+        });
+
+        function applyPatternToMask(patternUrl, mask) {
+            const patternImg = new Image();
+            patternImg.crossOrigin = 'Anonymous';
+            patternImg.onload = () => {
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+
+                // Create a tiled pattern
+                const pattern = tempCtx.createPattern(patternImg, 'repeat');
+                tempCtx.fillStyle = pattern;
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+                const patternData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const finalData = patternApplyCurrentImageData.data;
+                const maskData = mask.data;
+
+                // Use the mask to blend the pattern into the current image data
+                for (let i = 0; i < finalData.length; i += 4) {
+                    if (maskData[i + 3] > 0) { // If pixel is in the mask
+                        finalData[i] = patternData.data[i];
+                        finalData[i + 1] = patternData.data[i + 1];
+                        finalData[i + 2] = patternData.data[i + 2];
+                        // Keep original alpha if needed, or set to 255
+                        // finalData[i + 3] = patternData.data[i + 3]; 
+                    }
+                }
+                
+                // Update the main canvas
+                ctx.putImageData(patternApplyCurrentImageData, 0, 0);
+            };
+            patternImg.src = patternUrl;
         }
     }
 
