@@ -9841,28 +9841,32 @@
         img.onload = () => {
             patternApplyBaseImage = img;
             
-            // Scale canvas to fit image while maintaining aspect ratio
+            // Match LEFT exactly: use the same "contain" logic as CSS background-size: contain
+            // i.e. draw the image into the full preview box, centered, without cropping.
             const parent = canvas.parentElement;
             const parentRect = parent.getBoundingClientRect();
-            const imgAspectRatio = img.width / img.height;
-            const parentAspectRatio = parentRect.width / parentRect.height;
 
-            let canvasW, canvasH;
-            if (imgAspectRatio > parentAspectRatio) {
-                canvasW = parentRect.width;
-                canvasH = parentRect.width / imgAspectRatio;
-            } else {
-                canvasH = parentRect.height;
-                canvasW = parentRect.height * imgAspectRatio;
-            }
-            
-            canvas.width = canvasW;
-            canvas.height = canvasH;
-            highlightCanvas.width = canvasW;
-            highlightCanvas.height = canvasH;
-            
-            // Draw image, store pixel data
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // Use integers to avoid fractional canvas sizes (prevents blur)
+            const boxW = Math.max(1, Math.floor(parentRect.width));
+            const boxH = Math.max(1, Math.floor(parentRect.height));
+
+            canvas.width = boxW;
+            canvas.height = boxH;
+            highlightCanvas.width = boxW;
+            highlightCanvas.height = boxH;
+
+            // Clear + draw using contain fit inside the full box
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const scale = Math.min(boxW / img.width, boxH / img.height);
+            const drawW = Math.round(img.width * scale);
+            const drawH = Math.round(img.height * scale);
+            const dx = Math.round((boxW - drawW) / 2);
+            const dy = Math.round((boxH - drawH) / 2);
+
+            ctx.drawImage(img, dx, dy, drawW, drawH);
+
+            // Store pixel data from the full box (same as what user sees)
             patternApplyBaseImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             patternApplyCurrentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             

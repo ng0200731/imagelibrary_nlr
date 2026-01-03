@@ -4050,6 +4050,7 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   padding: 16px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* Pattern Apply - left dropzone */
@@ -4086,10 +4087,13 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 .pattern-apply-center-preview {
   flex: 1;
   position: relative;
-  border: 2px dashed #ddd;
+  border: 2px dashed #bbb; /* match left */
   border-radius: 10px;
-  background-color: #fafafa;
+  background-color: #fafafa; /* match left */
   overflow: hidden;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .pattern-apply-center-canvas {
