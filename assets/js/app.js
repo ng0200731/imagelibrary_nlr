@@ -1534,9 +1534,12 @@
             // so all images in the same group share the same box color.
             // In AND mode, we rely on backend tagSelectedImages: only those images
             // should be highlighted as true matches of all tags.
-            const shouldHighlight = tagSearchMode === 'AND'
-                ? isTagSelected && matchingSubjectiveTags.length > 0
-                : matchingSubjectiveTags.length > 0;
+            const noTagMatchesOverlay = currentSearchTags.length > 0 && tagSelectedImages.length === 0 && !isPoolView;
+            const shouldHighlight = noTagMatchesOverlay
+                ? false
+                : (tagSearchMode === 'AND'
+                    ? isTagSelected && matchingSubjectiveTags.length > 0
+                    : matchingSubjectiveTags.length > 0);
 
             // Never highlight cards in the "Other Images" section.
             // (They should be neutral/blank even if their tags contain the search terms.)
@@ -1768,6 +1771,8 @@
         // Handle selection state (only for non-greyscale images)
         if (!isGreyscaleIndicator) {
             const wasAlreadySelected = selectedImages.includes(image.id) || tagSelectedImages.includes(image.id);
+            // If search has 0 matches, force everything to appear non-selected (except manual selections)
+            const noTagMatches = currentSearchTags.length > 0 && tagSelectedImages.length === 0;
             const hasMatchingTags = (tagSearchMode === 'OR') && currentSearchTags.length > 0 && (matchingTags.length > 0 || tagSelectedImages.includes(image.id));
 
             // Debug for happy image
@@ -1790,9 +1795,11 @@
                 : hasMatchingTags;
 
             // In AND mode with active tags, only true AND matches should appear selected.
-            const shouldShowSelected = (isAndMode && currentSearchTags.length > 0)
-                ? (effectiveHasMatchingTags || tagSelectedImages.includes(image.id))
-                : (wasAlreadySelected || effectiveHasMatchingTags || tagSelectedImages.includes(image.id));
+            const shouldShowSelected = (noTagMatches)
+                ? selectedImages.includes(image.id) // only manual selections remain visible
+                : ((isAndMode && currentSearchTags.length > 0)
+                    ? (effectiveHasMatchingTags || tagSelectedImages.includes(image.id))
+                    : (wasAlreadySelected || effectiveHasMatchingTags || tagSelectedImages.includes(image.id)));
 
             // Handle selection logic (same for both pool view and library view)
             if (shouldShowSelected) {
@@ -2673,6 +2680,19 @@
                 // (Non-matching images should not appear selected by search.)
                 tagSelectedImages = tagMatchingImages.map(img => img.id);
 
+                // If there are NO matches, ensure NOTHING is shown as selected/highlighted
+                // (user expects all images in non-selected mode when "No Match Found").
+                if (tagSelectedImages.length === 0) {
+                    // Clear any selection-source metadata that drives tag-selection styling
+                    // (keep manual selections intact)
+                    Object.keys(imageSelectionSource).forEach((id) => {
+                        if (imageSelectionSource[id] !== 'manual') {
+                            delete imageSelectionSource[id];
+                            delete imageSelectionOrder[id];
+                        }
+                    });
+                }
+
                 // Ensure selection metadata is populated for ALL tag-selected images (same as above)
                 // This block may look redundant, but the code intentionally reassigns tagSelectedImages after sorting.
                 const currentTimestamp2 = Date.now();
@@ -2890,6 +2910,20 @@
     }
 
     async function updateTagChipColors(tags, searchMode) {
+        // If there are active tags but 0 matches, keep chips but do NOT color them.
+        // (User should only see "No Match Found" and plain chips.)
+        if (getActiveSearchTagTexts().length > 0 && tagSelectedImages.length === 0 && !isPoolView) {
+            const chipContainer = document.getElementById('library-search-chips');
+            if (chipContainer) {
+                chipContainer.querySelectorAll('.search-chip').forEach(chip => {
+                    chip.classList.remove('has-matches', 'no-matches');
+                    chip.style.background = '';
+                    chip.style.borderColor = '';
+                    chip.style.color = '';
+                });
+            }
+            return;
+        }
         for (const tagText of tags) {
             try {
                 const sessionToken = localStorage.getItem('sessionToken');
@@ -3004,6 +3038,7 @@
             await loadPatternsForPatternApply();
             initializePatternApplyDropzone();
             initializePatternApplyPatternDrop();
+            initPatternApplyMagnifiers();
         }
     }
 
@@ -9528,6 +9563,9 @@
     }
 
     let patternApplyPatterns = []; // Store patterns for filtering
+    let patternApplyAppliedPatternIds = new Set(); // multiple applied patterns (highlight + show tint UI)
+    let patternApplyAppliedPatternColors = new Map(); // patternId -> unique highlight color
+    let patternApplyAppliedMasks = new Map(); // patternId -> ImageData mask for region/color (for hover preview)
 
     // Pattern Apply canvas state
     let patternApplyBaseImage = null; // HTMLImageElement
@@ -9589,6 +9627,7 @@
 
             // Right-side controls
             const controls = document.createElement('div');
+            controls.className = 'pattern-apply-tint-controls';
             controls.style.display = 'flex';
             controls.style.alignItems = 'center';
             controls.style.gap = '6px';
@@ -9648,6 +9687,17 @@
             tintWrap.style.alignItems = 'center';
             tintWrap.style.gap = '6px';
 
+            // Applied state (can be multiple): highlight + show tint controls
+            const pid = String(pattern.id);
+            if (patternApplyAppliedPatternIds && patternApplyAppliedPatternIds.has(pid)) {
+                row.classList.add('is-applied');
+
+                // Unique background color per applied pattern
+                const bg = pickUniquePatternColor(pid);
+                row.style.background = bg;
+                row.style.borderLeftColor = '#000';
+            }
+
             tintWrap.appendChild(tintLabel);
             tintWrap.appendChild(swatch);
             tintWrap.appendChild(colorInput);
@@ -9658,13 +9708,63 @@
             // Make the pattern row draggable
             row.draggable = true;
             row.addEventListener('dragstart', (e) => {
-                // Store the pattern's image URL and tint for the drop event
+                // Store the pattern's image URL + tint + id for the drop event
                 e.dataTransfer.setData('text/plain', img.src);
                 e.dataTransfer.setData('tint', row.dataset.tint || '#ffffff');
+                e.dataTransfer.setData('patternId', String(pattern.id));
                 e.dataTransfer.effectAllowed = 'copy';
             });
 
             // If user drops outside target, clear any leftover highlight
+            // Hover the row: temporarily show border on the center preview
+            row.addEventListener('mouseenter', () => {
+                row.classList.add('is-hovered');
+
+                const centerPreview = document.getElementById('pattern-apply-center-preview');
+                const highlightCanvas = document.getElementById('pattern-apply-highlight-canvas');
+                if (!centerPreview || !highlightCanvas) return;
+
+                // Border color should follow this row background color
+                const bg = getComputedStyle(row).backgroundColor;
+                centerPreview.style.setProperty('--pattern-hover-border', bg || '#2196f3');
+                centerPreview.classList.add('pattern-hover-border');
+
+                // If this pattern has a stored mask, temporarily highlight its region in the center
+                const stored = patternApplyAppliedMasks.get(pid);
+                if (stored && stored.mask) {
+                    const hctx = highlightCanvas.getContext('2d');
+                    hctx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+
+                    // Convert background color -> rgba with alpha
+                    // If bg is rgb(...), approximate by using the assigned HSL string (if available)
+                    // We'll prefer the assigned HSL/hex (from map) when possible.
+                    const assigned = patternApplyAppliedPatternColors.get(pid);
+                    const rgba = (assigned && String(assigned).startsWith('#'))
+                        ? hexToRgba(assigned, 110)
+                        : [255, 255, 0, 110];
+
+                    const highlight = maskToHighlight(stored.mask, rgba);
+                    hctx.putImageData(highlight, 0, 0);
+                }
+            });
+
+            row.addEventListener('mouseleave', () => {
+                row.classList.remove('is-hovered');
+
+                const centerPreview = document.getElementById('pattern-apply-center-preview');
+                const highlightCanvas = document.getElementById('pattern-apply-highlight-canvas');
+                if (centerPreview) {
+                    centerPreview.classList.remove('pattern-hover-border');
+                    centerPreview.style.removeProperty('--pattern-hover-border');
+                }
+
+                // Remove region highlight when hover ends
+                if (highlightCanvas) {
+                    const hctx = highlightCanvas.getContext('2d');
+                    hctx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+                }
+            });
+
             row.addEventListener('dragend', () => {
                 // If user releases drag anywhere (including outside drop targets), clear the overlay highlight
                 const highlightCanvas = document.getElementById('pattern-apply-highlight-canvas');
@@ -9814,6 +9914,11 @@
                 // Set image as dropzone background
                 dropzone.style.backgroundImage = `url(${dataUrl})`;
 
+                // Ensure original-magnifier uses the latest left background image
+                if (typeof initPatternApplyMagnifiers === 'function') {
+                    // no-op here; magnifier reads computed background image when needed
+                }
+
                 // Mirror the exact same image into the center section canvas
                 loadPatternApplyBaseImageToCanvas(dataUrl);
 
@@ -9935,18 +10040,56 @@
         return { mask: new ImageData(mask, width, height), pickedColor };
     }
 
-    function maskToHighlight(maskImageData) {
+    function maskToHighlight(maskImageData, rgba = [255, 255, 0, 110]) {
         const { width, height, data } = maskImageData;
         const highlight = new Uint8ClampedArray(width * height * 4);
+        const [r, g, b, a] = rgba;
         for (let i = 0; i < data.length; i += 4) {
             if (data[i + 3] > 0) {
-                highlight[i] = 255;
-                highlight[i + 1] = 255;
-                highlight[i + 2] = 0;
-                highlight[i + 3] = 110;
+                highlight[i] = r;
+                highlight[i + 1] = g;
+                highlight[i + 2] = b;
+                highlight[i + 3] = a;
             }
         }
         return new ImageData(highlight, width, height);
+    }
+
+    function hexToRgba(hex, alpha = 110) {
+        if (!hex) return [255, 255, 0, alpha];
+        const h = String(hex).replace('#', '').trim();
+        const full = h.length === 3
+            ? h.split('').map(ch => ch + ch).join('')
+            : h.padEnd(6, '0').slice(0, 6);
+        const r = parseInt(full.slice(0, 2), 16);
+        const g = parseInt(full.slice(2, 4), 16);
+        const b = parseInt(full.slice(4, 6), 16);
+        return [r, g, b, alpha];
+    }
+
+    function pickUniquePatternColor(patternId) {
+        // If already assigned, return it
+        if (patternApplyAppliedPatternColors.has(String(patternId))) {
+            return patternApplyAppliedPatternColors.get(String(patternId));
+        }
+
+        // Try to pick a non-repeating color. We'll sample hue by golden angle.
+        const used = new Set(Array.from(patternApplyAppliedPatternColors.values()));
+        const base = (patternApplyAppliedPatternColors.size * 137.508) % 360;
+
+        for (let i = 0; i < 60; i++) {
+            const hue = (base + i * 23) % 360;
+            const color = `hsl(${hue} 85% 80%)`; // light pastel background
+            if (!used.has(color)) {
+                patternApplyAppliedPatternColors.set(String(patternId), color);
+                return color;
+            }
+        }
+
+        // Fallback (should be rare)
+        const fallback = '#fff3cd';
+        patternApplyAppliedPatternColors.set(String(patternId), fallback);
+        return fallback;
     }
 
     function getColorAtPixel(data, width, x, y) {
@@ -9961,6 +10104,209 @@
         // Optional: include alpha in distance check if needed
         // const da = c1[3] - c2[3]; 
         return (dr * dr + dg * dg + db * db) < (tolerance * tolerance);
+    }
+
+    // --- Magnifier (Pattern Apply) ---
+    function initPatternApplyMagnifiers() {
+        const magBox = document.getElementById('magnifier');
+        const magOrigBox = document.getElementById('magnifier-original');
+        const magCanvas = document.getElementById('magnifier-canvas');
+        const magOrigCanvas = document.getElementById('magnifier-canvas-original');
+        const centerCanvas = document.getElementById('pattern-apply-center-canvas');
+        const leftDropzone = document.getElementById('pattern-apply-dropzone');
+
+        if (!magBox || !magOrigBox || !magCanvas || !magOrigCanvas || !centerCanvas || !leftDropzone) return;
+        if (centerCanvas.dataset.magnifierBound) return;
+        centerCanvas.dataset.magnifierBound = 'true';
+
+        const magCtx = magCanvas.getContext('2d');
+        const magOrigCtx = magOrigCanvas.getContext('2d');
+        const MAG_SIZE = 200;      // must match CSS
+        const SAMPLE = 16;         // zoom strength (source pixels)
+
+        magCanvas.width = MAG_SIZE;
+        magCanvas.height = MAG_SIZE;
+        magOrigCanvas.width = MAG_SIZE;
+        magOrigCanvas.height = MAG_SIZE;
+
+        function positionNearMouse(clientX, clientY) {
+            const gap = 12;
+            const size = MAG_SIZE;
+
+            // default to right side of cursor
+            let left = clientX + gap;
+            let top = clientY + gap;
+
+            // keep on screen
+            if (left + size > window.innerWidth) left = clientX - gap - size;
+            if (top + size > window.innerHeight) top = clientY - gap - size;
+            left = Math.max(0, Math.min(window.innerWidth - size, left));
+            top = Math.max(0, Math.min(window.innerHeight - size, top));
+
+            // place blue circle next to red circle
+            const left2 = left + size + gap;
+            let leftOrig = left2;
+            let topOrig = top;
+
+            // if second goes offscreen, stack below
+            if (leftOrig + size > window.innerWidth) {
+                leftOrig = left;
+                topOrig = top + size + gap;
+                if (topOrig + size > window.innerHeight) {
+                    topOrig = top - size - gap;
+                }
+            }
+
+            magBox.style.left = `${left}px`;
+            magBox.style.top = `${top}px`;
+            magOrigBox.style.left = `${leftOrig}px`;
+            magOrigBox.style.top = `${topOrig}px`;
+        }
+
+        function show(clientX, clientY) {
+            positionNearMouse(clientX, clientY);
+            magBox.classList.remove('is-hidden');
+            magOrigBox.classList.remove('is-hidden');
+        }
+        function hide() {
+            magBox.classList.add('is-hidden');
+            magOrigBox.classList.add('is-hidden');
+        }
+
+        function normToRect(clientX, clientY, rect) {
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            return { u: x / rect.width, v: y / rect.height };
+        }
+
+        function normToCanvas(ev, canvas) {
+            const r = canvas.getBoundingClientRect();
+            return normToRect(ev.clientX, ev.clientY, r);
+        }
+
+        // Center (processed/current) magnifier
+        function drawMagnifier(u, v) {
+            if (!patternApplyCurrentImageData) return;
+            const w = centerCanvas.width;
+            const h = centerCanvas.height;
+            const srcX = Math.floor(u * w);
+            const srcY = Math.floor(v * h);
+
+            const sx = Math.max(0, Math.min(w - SAMPLE, srcX - Math.floor(SAMPLE / 2)));
+            const sy = Math.max(0, Math.min(h - SAMPLE, srcY - Math.floor(SAMPLE / 2)));
+
+            magCtx.imageSmoothingEnabled = false;
+            magCtx.clearRect(0, 0, MAG_SIZE, MAG_SIZE);
+            magCtx.drawImage(centerCanvas, sx, sy, SAMPLE, SAMPLE, 0, 0, MAG_SIZE, MAG_SIZE);
+
+            const px = MAG_SIZE / SAMPLE;
+            // highlight hovered pixel (circle) - BLUE for centre
+            magCtx.strokeStyle = '#2196f3';
+            magCtx.lineWidth = 2;
+            magCtx.beginPath();
+            magCtx.arc((srcX - sx) * px + px / 2, (srcY - sy) * px + px / 2, px / 2, 0, Math.PI * 2);
+            magCtx.stroke();
+        }
+
+        // Left (original) magnifier from dropzone background-image (contain)
+        const leftImg = new Image();
+        let leftImgReady = false;
+
+        function refreshLeftImgFromBg() {
+            const bg = window.getComputedStyle(leftDropzone).backgroundImage;
+            if (!bg || bg === 'none') {
+                leftImgReady = false;
+                return;
+            }
+            const url = bg.startsWith('url(') ? bg.slice(4, -1).replace(/^"|"$/g, '') : '';
+            if (!url) {
+                leftImgReady = false;
+                return;
+            }
+            leftImgReady = false;
+            leftImg.onload = () => { leftImgReady = true; };
+            leftImg.src = url;
+        }
+
+        // call once now; also when base image loads it will be updated (we call again there)
+        refreshLeftImgFromBg();
+
+        function drawMagnifierOriginal(u, v) {
+            if (!leftImgReady) {
+                refreshLeftImgFromBg();
+                if (!leftImgReady) return;
+            }
+
+            const rect = leftDropzone.getBoundingClientRect();
+            const boxW = rect.width;
+            const boxH = rect.height;
+
+            // CSS contain math
+            const scale = Math.min(boxW / leftImg.width, boxH / leftImg.height);
+            const drawW = leftImg.width * scale;
+            const drawH = leftImg.height * scale;
+            const dx = (boxW - drawW) / 2;
+            const dy = (boxH - drawH) / 2;
+
+            const imgX = Math.floor((u * boxW - dx) / scale);
+            const imgY = Math.floor((v * boxH - dy) / scale);
+
+            // clamp into image
+            const clampedX = Math.max(0, Math.min(leftImg.width - 1, imgX));
+            const clampedY = Math.max(0, Math.min(leftImg.height - 1, imgY));
+
+            const sx = Math.max(0, Math.min(leftImg.width - SAMPLE, clampedX - Math.floor(SAMPLE / 2)));
+            const sy = Math.max(0, Math.min(leftImg.height - SAMPLE, clampedY - Math.floor(SAMPLE / 2)));
+
+            magOrigCtx.imageSmoothingEnabled = false;
+            magOrigCtx.clearRect(0, 0, MAG_SIZE, MAG_SIZE);
+            magOrigCtx.drawImage(leftImg, sx, sy, SAMPLE, SAMPLE, 0, 0, MAG_SIZE, MAG_SIZE);
+
+            const px = MAG_SIZE / SAMPLE;
+            // highlight hovered pixel (circle) - RED for left/original
+            magOrigCtx.strokeStyle = '#ff0000';
+            magOrigCtx.lineWidth = 2;
+            magOrigCtx.beginPath();
+            magOrigCtx.arc((clampedX - sx) * px + px / 2, (clampedY - sy) * px + px / 2, px / 2, 0, Math.PI * 2);
+            magOrigCtx.stroke();
+        }
+
+        // Handle mouse movement on center canvas
+        function handleCenterMove(ev) {
+            if (!patternApplyCurrentImageData) return;
+            const { u, v } = normToCanvas(ev, centerCanvas);
+            drawMagnifier(u, v);
+            drawMagnifierOriginal(u, v);
+            show(ev.clientX, ev.clientY);
+        }
+
+        // Handle mouse movement on left dropzone
+        function handleLeftMove(ev) {
+            if (!patternApplyCurrentImageData) return;
+            const leftRect = leftDropzone.getBoundingClientRect();
+            const { u, v } = normToRect(ev.clientX, ev.clientY, leftRect);
+            
+            // Convert left dropzone coordinates to center canvas coordinates
+            const centerRect = centerCanvas.getBoundingClientRect();
+            const centerU = (u * leftRect.width) / centerRect.width;
+            const centerV = (v * leftRect.height) / centerRect.height;
+            
+            drawMagnifier(centerU, centerV);
+            drawMagnifierOriginal(centerU, centerV);
+            show(ev.clientX, ev.clientY);
+        }
+
+        // Add event listeners to both sections
+        centerCanvas.addEventListener('mousemove', handleCenterMove);
+        leftDropzone.addEventListener('mousemove', handleLeftMove);
+        
+        // Hide magnifiers when leaving either section
+        function handleMouseLeave() {
+            hide();
+        }
+        
+        centerCanvas.addEventListener('mouseleave', handleMouseLeave);
+        leftDropzone.addEventListener('mouseleave', handleMouseLeave);
     }
 
     // Pattern Apply - Drag pattern onto center preview
@@ -10093,6 +10439,7 @@
             if (!patternApplyBaseImageData) return;
 
             const patternUrl = e.dataTransfer.getData('text/plain');
+            const droppedPatternId = e.dataTransfer.getData('patternId');
             if (!patternUrl) return;
 
             const rect = canvas.getBoundingClientRect();
@@ -10109,6 +10456,24 @@
                 const maskResult = (patternApplyMode === 'color')
                     ? colorMaskFromImageData(sourceImageData, x, y, patternApplyTolerance)
                     : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
+
+                // Mark this pattern as applied (can be multiple)
+                if (droppedPatternId) {
+                    const patternId = String(droppedPatternId);
+                    patternApplyAppliedPatternIds.add(patternId);
+                    
+                    // Store the mask for this pattern (for hover preview)
+                    patternApplyAppliedMasks.set(patternId, {
+                        mask: maskResult.mask,
+                        mode: patternApplyMode
+                    });
+                    
+                    // Ensure this pattern has a unique color
+                    pickUniquePatternColor(patternId);
+                    
+                    // Re-render list to update highlight + tint-circle visibility
+                    renderPatternApplyList(patternApplyPatterns);
+                }
 
                 applyPatternToMask(patternUrl, maskResult.mask);
                 clearOverlay();
@@ -10823,10 +11188,14 @@
             // Refresh display if there are search tags
             if (searchTags.length > 0 || isPoolView) {
                 console.log('Refreshing display with new patternMode:', patternMode);
-                // Clear selectedImages when pattern mode changes
+                // Clear ALL selections (manual + tag) when pattern mode changes
                 const previousSelectedCount = selectedImages.length;
+                const previousTagSelectedCount = tagSelectedImages.length;
                 selectedImages = [];
-                console.log('Cleared', previousSelectedCount, 'selected images due to pattern mode change');
+                tagSelectedImages = [];
+                imageSelectionSource = {};
+                imageSelectionOrder = {};
+                console.log('Cleared', previousSelectedCount, 'manual selected images and', previousTagSelectedCount, 'tag-selected images due to pattern mode change');
                 // Use a small delay to ensure button state is fully updated
                 setTimeout(() => {
                     displayLibraryImages().then(() => {
