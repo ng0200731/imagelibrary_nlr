@@ -9566,6 +9566,7 @@
     let patternApplyAppliedPatternIds = new Set(); // multiple applied patterns (highlight + show tint UI)
     let patternApplyAppliedPatternColors = new Map(); // patternId -> unique highlight color
     let patternApplyAppliedMasks = new Map(); // patternId -> ImageData mask for region/color (for hover preview)
+    let patternApplyTargetKeyToPatternId = new Map(); // targetKey (mask signature) -> patternId (replacement)
 
     // Pattern Apply canvas state
     let patternApplyBaseImage = null; // HTMLImageElement
@@ -9738,10 +9739,13 @@
                     // Convert background color -> rgba with alpha
                     // If bg is rgb(...), approximate by using the assigned HSL string (if available)
                     // We'll prefer the assigned HSL/hex (from map) when possible.
-                    const assigned = patternApplyAppliedPatternColors.get(pid);
-                    const rgba = (assigned && String(assigned).startsWith('#'))
-                        ? hexToRgba(assigned, 110)
-                        : [255, 255, 0, 110];
+                    const rgba = (() => {
+                        // Use the actual row background color for the overlay highlight
+                        const bg = getComputedStyle(row).backgroundColor;
+                        const m = bg && bg.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+                        if (m) return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), 110];
+                        return [255, 255, 0, 110];
+                    })();
 
                     const highlight = maskToHighlight(stored.mask, rgba);
                     hctx.putImageData(highlight, 0, 0);
@@ -10067,6 +10071,27 @@
         return [r, g, b, alpha];
     }
 
+    function maskToKey(maskImageData) {
+        // Create a deterministic signature for a mask so we can detect "same region/color"
+        // We hash the alpha channel positions using a cheap rolling hash.
+        const { width, height, data } = maskImageData;
+        let hash = 2166136261; // FNV-ish base
+        for (let i = 3; i < data.length; i += 4) {
+            if (data[i] > 0) {
+                // incorporate pixel index (i) but keep it in 32-bit space
+                hash ^= i;
+                hash = Math.imul(hash, 16777619);
+            }
+        }
+        // include dimensions too
+        hash ^= width;
+        hash = Math.imul(hash, 16777619);
+        hash ^= height;
+        hash = Math.imul(hash, 16777619);
+        // signed->unsigned
+        return `m:${(hash >>> 0).toString(16)}:${width}x${height}`;
+    }
+
     function pickUniquePatternColor(patternId) {
         // If already assigned, return it
         if (patternApplyAppliedPatternColors.has(String(patternId))) {
@@ -10371,6 +10396,7 @@
             resetBtn.dataset.bound = 'true';
             resetBtn.addEventListener('click', () => {
                 if (!patternApplyBaseImageData) return;
+
                 // Reset current image back to the original base image
                 patternApplyCurrentImageData = new ImageData(
                     new Uint8ClampedArray(patternApplyBaseImageData.data),
@@ -10379,6 +10405,13 @@
                 );
                 ctx.putImageData(patternApplyCurrentImageData, 0, 0);
                 clearOverlay();
+
+                // Reset Pattern Apply state (pattern column + mappings)
+                patternApplyAppliedPatternIds = new Set();
+                patternApplyAppliedPatternColors = new Map();
+                patternApplyAppliedMasks = new Map();
+                patternApplyTargetKeyToPatternId = new Map();
+                renderPatternApplyList(patternApplyPatterns);
 
                 // Reset hover cache
                 patternApplyLastHover = { x: -1, y: -1, key: '' };
@@ -10457,20 +10490,34 @@
                     ? colorMaskFromImageData(sourceImageData, x, y, patternApplyTolerance)
                     : floodFillMaskFromImageData(sourceImageData, x, y, patternApplyTolerance);
 
-                // Mark this pattern as applied (can be multiple)
+                // Mark this pattern as applied (with replacement if same region/color)
                 if (droppedPatternId) {
                     const patternId = String(droppedPatternId);
+                    const targetKey = maskToKey(maskResult.mask);
+
+                    // If this target already had a pattern, replace it (remove old highlight)
+                    const prevPatternId = patternApplyTargetKeyToPatternId.get(targetKey);
+                    if (prevPatternId && prevPatternId !== patternId) {
+                        patternApplyAppliedPatternIds.delete(String(prevPatternId));
+                        patternApplyAppliedMasks.delete(String(prevPatternId));
+                        // keep prev color in map (harmless), but row won't be highlighted anymore
+                    }
+
+                    // Set latest mapping for this target
+                    patternApplyTargetKeyToPatternId.set(targetKey, patternId);
+
                     patternApplyAppliedPatternIds.add(patternId);
-                    
+
                     // Store the mask for this pattern (for hover preview)
                     patternApplyAppliedMasks.set(patternId, {
                         mask: maskResult.mask,
-                        mode: patternApplyMode
+                        mode: patternApplyMode,
+                        targetKey
                     });
-                    
+
                     // Ensure this pattern has a unique color
                     pickUniquePatternColor(patternId);
-                    
+
                     // Re-render list to update highlight + tint-circle visibility
                     renderPatternApplyList(patternApplyPatterns);
                 }
