@@ -1307,28 +1307,27 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 /* Lightbox content container */
 .lightbox-content {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: 90%;
-  max-height: 90%;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start; /* Align items to the top */
+  gap: 16px; /* Space between columns */
+  width: 95vw; /* Use more horizontal space */
+  height: 90vh; /* Use more vertical space */
+  padding: 0; /* Remove default padding if any */
 }
 
 /* Lightbox metadata panel */
 .lightbox-metadata-panel {
-  position: fixed;
-  left: 24px;
-  top: 80px;
-  width: 25vw;
+  flex: 0 0 25%; /* Fixed width (25% of container) */
   max-width: 360px;
   min-width: 240px;
-  max-height: 80vh;
+  max-height: 100%;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.85);
   border: 1px solid #777;
   border-radius: 8px;
   padding: 10px;
   color: #fff;
-  z-index: 9999;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -1373,20 +1372,22 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
 
 /* Lightbox center container */
 .lightbox-center {
-  flex: 1;
+  flex: 1 1 50%; /* Flexible center column */
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   min-width: 0;
+  height: 100%;
 }
 
-.modal-content {
+#lightbox-image.modal-content {
   display: block;
-  max-width: 90vw;
-  max-height: calc(90vh - 60px); /* Leave space for tags */
+  max-width: 100%;
+  max-height: calc(100% - 60px); /* Subtract space for tags */
   width: auto;
   height: auto;
-  object-fit: contain; /* Maintain aspect ratio, fit within bounds */
+  object-fit: contain;
   border: 2px solid #fff;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
@@ -1420,18 +1421,16 @@ body:has(#page-library:not(.is-hidden)) #page-upload {
   cursor: pointer;
 }
 .lightbox-freq-floating {
-  position: fixed;
-  right: 24px;
-  top: 80px;
-  width: 25vw;
+  flex: 0 0 25%; /* Fixed width (25% of container) */
   max-width: 360px;
   min-width: 240px;
+  max-height: 100%;
+  overflow-y: auto;
   background: rgba(0, 0, 0, 0.85);
   border: 1px solid #777;
   border-radius: 8px;
   padding: 10px;
   color: #fff;
-  z-index: 9999;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 .lightbox-save-btn {

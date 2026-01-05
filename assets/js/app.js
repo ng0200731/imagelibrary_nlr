@@ -1946,7 +1946,7 @@
         const shouldShowSelectedAtFront = !isPoolView && allSelectedImageIds.length > 0 && currentPage === 0;
         const shouldShowNoMatchFoundHeader = !isPoolView && allSelectedImageIds.length === 0 && currentPage === 0 && currentSearchTags.length > 0;
         // Track if selected images were shown at front (so we can skip them on subsequent pages)
-        const selectedImagesWereShownAtFront = !isPoolView && allSelectedImageIds.length > 0 && currentSearchTags.length > 0;
+        const selectedImagesWereShownAtFront = !isPoolView && allSelectedImageIds.length > 0;
         
         // For pagination, we need to exclude selected images if they were shown at the front
         // This ensures we paginate through non-selected images correctly
@@ -1991,8 +1991,8 @@
             let selectedImagesData = loadedImages.filter(({ image }) => allSelectedImageIds.includes(image.id));
 
             // Add a visual separator so users understand why "other" images appear behind matches.
-            // Only show in library view when search tags are active (not pool view).
-            const shouldShowMatchedHeader = !isPoolView && currentSearchTags.length > 0;
+            // Show in library view when there are selected images (regardless of search tags).
+            const shouldShowMatchedHeader = !isPoolView && selectedImagesData.length > 0;
             if (shouldShowMatchedHeader) {
                 const matchedHeader = document.createElement('div');
                 matchedHeader.className = 'results-separator results-separator--matched';
@@ -2066,7 +2066,7 @@
 
         // If we displayed matched images at the front, insert an "Other Images" header before the rest.
         // Also ensure it exists when loading more pages if separators should be shown
-        const shouldShowOtherHeader = selectedImagesWereShownAtFront && !isPoolView && currentSearchTags.length > 0;
+        const shouldShowOtherHeader = selectedImagesWereShownAtFront && !isPoolView;
         if (shouldShowOtherHeader) {
             // Check if it already exists
             const existingOtherHeader = libraryGrid.querySelector('.results-separator--others');
@@ -2769,9 +2769,19 @@
             }, 100);
 
             const images = imagesToDisplay;
-            
+
+            // Deduplicate images by ID to prevent the same image appearing multiple times
+            const uniqueImages = [];
+            const seenIds = new Set();
+            for (const img of images) {
+                if (!seenIds.has(img.id)) {
+                    seenIds.add(img.id);
+                    uniqueImages.push(img);
+                }
+            }
+
             // Store all images for pagination
-            allImagesToDisplay = images;
+            allImagesToDisplay = uniqueImages;
             currentPage = 0; // Reset pagination when loading new images
             
             // Calculate images per row based on grid width
@@ -3547,9 +3557,15 @@
         pendingRemoveTags.clear();
         pendingPatternChange = null;
         lightboxDirty = false;
+        const wasProjectView = isProjectViewLightbox;
         isProjectViewLightbox = false; // Reset project view flag
         if (lightboxLockBtn) lightboxLockBtn.classList.add('is-hidden');
         if (lightboxSaveBtn) lightboxSaveBtn.classList.add('is-hidden');
+
+        // Refresh library display when returning from lightbox (but not from project view)
+        if (!wasProjectView && document.getElementById('page-library').classList.contains('page') && !document.getElementById('page-library').classList.contains('is-hidden')) {
+            displayLibraryImages();
+        }
     }
 
     // --- Library Lightbox Functions ---
@@ -4955,7 +4971,10 @@
         try {
             // Get current tags
             let currentTags = Array.isArray(image.tags) ? [...image.tags] : [];
-            
+
+            // Track if pattern was changed (before clearing pendingPatternChange)
+            const hadPatternChange = !!pendingPatternChange;
+
             // Apply pending pattern change first (remove old pattern, add new one)
             if (pendingPatternChange) {
                 currentTags = currentTags.filter(tag => !tag.toLowerCase().startsWith('pattern:'));
@@ -5014,7 +5033,7 @@
                 lightboxSaveBtn.classList.add('is-hidden');
             }
             lockLightboxFields(); // This will change lock icon to locked state
-            
+
             showLightboxToast('Tags saved');
         } catch (err) {
             console.error('Failed to save changes:', err);
@@ -5648,14 +5667,11 @@
             updateLibraryTitle(false);
             console.log('Title updated to Library view');
 
-            // PRESERVE search tags and selections when going back to library
-            // Users should see all their search tags still visible and functional
-            if (searchTags.length > 0) {
-                console.log('Preserving search tags and all selections in library view');
-
-                // Keep tagSelectedImages as they are for proper display in library view
-                console.log('Search tags and selections preserved:', selectedImages.length + tagSelectedImages.length, 'tags:', searchTags.length);
-            }
+            // PRESERVE selections when going back to library
+            // Selected images will be repositioned to the top
+            console.log('Preserving selections when returning to library');
+            console.log('Selected images:', selectedImages.length);
+            console.log('Tag selected images:', tagSelectedImages.length);
 
             // Update button visibility BEFORE refreshing view
             updateButtonVisibility();
@@ -9629,7 +9645,7 @@
             // Right-side controls
             const controls = document.createElement('div');
             controls.className = 'pattern-apply-tint-controls';
-            controls.style.display = 'flex';
+            // NOTE: display is controlled via CSS so tint controls only show for applied rows
             controls.style.alignItems = 'center';
             controls.style.gap = '6px';
 

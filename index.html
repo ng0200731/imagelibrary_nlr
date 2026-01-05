@@ -478,12 +478,32 @@
     </button>
     <a class="prev">&#10094;</a>
     <div class="lightbox-content">
+      <!-- Left: Metadata Panel -->
       <div id="lightbox-metadata-panel" class="lightbox-metadata-panel">
         <!-- Metadata will be populated by JavaScript -->
       </div>
+
+      <!-- Center: Image and Tags -->
       <div class="lightbox-center">
         <img class="modal-content" id="lightbox-image">
         <div id="lightbox-tags" class="lightbox-tags"></div>
+      </div>
+
+      <!-- Right: Floating Panel for Frequent Tags -->
+      <div id="lightbox-freq-floating" class="lightbox-freq-floating">
+        <h4>
+          <span>Frequently Used</span>
+          <button id="lightbox-freq-sort-btn" class="button is-small" type="button" title="Sort A-Z">A-Z</button>
+        </h4>
+        <div id="lightbox-freq-list" class="lightbox-freq-list">
+          <!-- Frequent tags will be populated here -->
+        </div>
+        <div class="lightbox-toast is-hidden"></div>
+
+        <div class="lightbox-tag-add">
+            <input id="lightbox-subj-input" type="text" placeholder="Add a new tag..." autocomplete="off" />
+            <button id="lightbox-add-tag-btn" class="button" type="button">Add</button>
+        </div>
       </div>
     </div>
     <a class="next">&#10095;</a>
